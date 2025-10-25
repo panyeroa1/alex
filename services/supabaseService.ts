@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { ChatMessage, Conversation } from '../types';
+import { ChatMessage, Conversation, MediaItem } from '../types';
 
 export const signInAnonymouslyIfNeeded = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -131,5 +131,87 @@ export const uploadRecording = async (conversationId: string, audioBlob: Blob): 
         if (updateError) {
             console.error("Error updating conversation with recording URL:", updateError);
         }
+    }
+};
+
+export const uploadMediaFile = async (file: File): Promise<MediaItem | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+        console.error("User not authenticated, cannot upload media.");
+        return null;
+    }
+    
+    const filePath = `${user.id}/${file.name}`;
+    const { error: uploadError } = await supabase.storage
+        .from('media')
+        .upload(filePath, file, { upsert: true });
+
+    if (uploadError) {
+        console.error('Error uploading media file:', uploadError);
+        return null;
+    }
+
+    const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(filePath);
+
+    if (!publicUrl) {
+        console.error('Could not get public URL for uploaded media.');
+        return null;
+    }
+    
+    const { data: listData, error: listError } = await supabase.storage.from('media').list(user.id, { search: file.name });
+    const fileData = listData && !listError ? listData[0] : null;
+
+    const mediaItem: MediaItem = {
+        id: fileData ? Date.parse(fileData.created_at) : Date.now(),
+        name: file.name,
+        url: publicUrl,
+        type: file.type.startsWith('audio') ? 'audio' : 'video',
+        source: 'upload',
+    };
+
+    return mediaItem;
+};
+
+export const listMediaFiles = async (): Promise<MediaItem[]> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase.storage
+        .from('media')
+        .list(user.id, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+    
+    if (error) {
+        console.error('Error listing media files:', error);
+        return [];
+    }
+
+    if (!data) return [];
+    
+    const mediaItems: MediaItem[] = data
+        .filter(file => !file.name.startsWith('.')) // Supabase storage might have placeholder files
+        .map(file => {
+            const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(`${user.id}/${file.name}`);
+            return {
+                id: Date.parse(file.created_at),
+                name: file.name,
+                url: publicUrl,
+                type: (file.metadata?.mimetype as string)?.startsWith('audio/') ? 'audio' : 'video',
+                source: 'upload'
+            };
+        });
+
+    return mediaItems;
+};
+
+export const deleteMediaFile = async (fileName: string): Promise<void> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    
+    const { error } = await supabase.storage
+        .from('media')
+        .remove([`${user.id}/${fileName}`]);
+
+    if (error) {
+        console.error('Error deleting media file:', error);
     }
 };

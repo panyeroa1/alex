@@ -55,6 +55,7 @@ export interface MediaItem {
     name: string;
     url: string;
     type: 'audio' | 'video';
-    source?: 'url' | 'youtube';
+    // FIX: Add 'upload' to the source property to allow for media uploaded via Supabase storage.
+    source?: 'url' | 'youtube' | 'upload';
     youtubeId?: string;
 }

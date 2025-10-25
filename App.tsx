@@ -4,6 +4,7 @@ import { Luto, MiniLuto } from './components/Orb';
 import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, BackgroundTask, IntegrationCredentials, MediaItem, ProjectFile } from './types';
 import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData, analyzeCode, summarizeConversationsForMemory, generateConversationSummary, performWebSearch, searchYouTube, generateLyrics, analyzeAudioTone, blobToBase64 } from './services/geminiService';
 import * as db from './services/supabaseService';
+import { supabase } from './services/supabase';
 import { DEFAULT_SYSTEM_PROMPT, DEV_TOOLS } from './constants';
 import { Sidebar } from './components/Sidebar';
 import { Settings } from './components/Settings';
@@ -284,6 +285,27 @@ const App: React.FC = () => {
         }, 5000);
     }, []);
 
+    const endSession = useCallback(async () => {
+        if (isRecording) {
+            recorderRef.current?.stop();
+            setIsRecording(false);
+        }
+        if (sessionRef.current) {
+            await disconnectLiveSession(sessionRef.current, userAudioStreamRef.current, videoStreamRef.current);
+            sessionRef.current = null;
+            toggleOutputMuteRef.current = null;
+            userAudioStreamRef.current = null;
+            analyserRef.current = { input: null, output: null };
+            if(audioContextRef.current) {
+                audioContextRef.current.outputGain.disconnect();
+                audioContextRef.current = null;
+            }
+            setAgentStatus('idle');
+            if (isVideoEnabled) setIsVideoEnabled(false);
+            addNotification('Voice session ended.');
+        }
+    }, [addNotification, isVideoEnabled, isRecording]);
+
     const handleNewConversation = useCallback(async (closeSidebar = true) => {
         if (sessionRef.current) await endSession();
         const newConvo = await db.createConversation();
@@ -294,8 +316,35 @@ const App: React.FC = () => {
         setUploadedFiles([]);
         chatRef.current = null;
         if(closeSidebar) setIsSidebarOpen(false);
-    }, []); // Dependencies will be complex, for now let's keep it simple as it's a fix
+    }, [endSession]);
 
+    const initializeApp = useCallback(async () => {
+        try {
+            await db.signInAnonymouslyIfNeeded();
+            const convos = await db.getConversations();
+            setConversations(convos);
+            if (convos.length > 0) {
+                const latestConvo = convos[0];
+                setCurrentConversationId(latestConvo.id);
+                setTranscript(latestConvo.history);
+            } else {
+                await handleNewConversation(false);
+            }
+            
+            // Load media library from both Supabase Storage (for uploads) and localStorage (for links)
+            const uploadedMedia = await db.listMediaFiles();
+            const storedLinksRaw = localStorage.getItem('alex_media_library_links');
+            const storedLinks = storedLinksRaw ? JSON.parse(storedLinksRaw) : [];
+            const combinedLibrary = [...uploadedMedia, ...storedLinks];
+
+            setMediaLibrary(combinedLibrary);
+            setPlaylist(combinedLibrary.filter((item: MediaItem) => item.type === 'audio'));
+
+        } catch (error) {
+            console.error("Initialization failed:", error);
+            addNotification("Failed to initialize the app.", "error");
+        }
+    }, [handleNewConversation, addNotification]);
 
     useEffect(() => {
         const enrolled = localStorage.getItem('alex_biometrics_enrolled') === 'true';
@@ -310,33 +359,8 @@ const App: React.FC = () => {
             setIntegrations(prev => ({ ...prev, ...parsed }));
         }
         
-        const savedLibrary = localStorage.getItem('alex_media_library');
-        if (savedLibrary) {
-            const libraryItems = JSON.parse(savedLibrary);
-            setMediaLibrary(libraryItems);
-            setPlaylist(libraryItems.filter((item: MediaItem) => item.type === 'audio'));
-        }
-
         const savedProjectFiles = localStorage.getItem('alex_project_files');
         if(savedProjectFiles) setProjectFiles(JSON.parse(savedProjectFiles));
-
-        const initializeApp = async () => {
-            try {
-                await db.signInAnonymouslyIfNeeded();
-                const convos = await db.getConversations();
-                setConversations(convos);
-                if (convos.length > 0) {
-                    const latestConvo = convos[0];
-                    setCurrentConversationId(latestConvo.id);
-                    setTranscript(latestConvo.history);
-                } else {
-                    await handleNewConversation(false);
-                }
-            } catch (error) {
-                console.error("Initialization failed:", error);
-                addNotification("Failed to initialize the app.", "error");
-            }
-        };
 
         if (enrolled) {
             initializeApp();
@@ -351,7 +375,23 @@ const App: React.FC = () => {
                     addNotification("Failed to load Python environment.", "error");
                 });
         }
-    }, [isEnrolled, addNotification, handleNewConversation]);
+    }, [isEnrolled, initializeApp]);
+    
+    // Supabase Keep-Alive: Periodically refresh the session to prevent expiration.
+    useEffect(() => {
+        const keepAliveInterval = setInterval(async () => {
+            try {
+                // A lightweight query to keep the session active
+                const { error } = await supabase.auth.getSession();
+                if (error) throw error;
+                console.log('Supabase session kept alive.');
+            } catch (error) {
+                console.error('Keep-alive ping failed:', error);
+            }
+        }, 5 * 60 * 1000); // every 5 minutes
+
+        return () => clearInterval(keepAliveInterval);
+    }, []);
 
     useEffect(() => {
         if (currentConversationId && transcript.length > 0 && !isSavingRef.current) {
@@ -468,14 +508,24 @@ const App: React.FC = () => {
         }
     }, [addNotification, updateTranscript, playAudio]);
 
-    // FIX: Moved handleSaveMediaLibrary and music player functions before handleToolCall to resolve "used before declaration" errors.
-    const handleSaveMediaLibrary = useCallback((library: MediaItem[]) => {
-        setMediaLibrary(library);
-        setPlaylist(library.filter(item => item.type === 'audio'));
-        localStorage.setItem('alex_media_library', JSON.stringify(library));
-    }, []);
+    const handleSaveMediaLibrary = useCallback((newLibrary: MediaItem[]) => {
+        // Detect removed items that were uploaded to storage
+        const removedItems = mediaLibrary.filter(oldItem => 
+            oldItem.source === 'upload' && !newLibrary.some(newItem => newItem.id === oldItem.id)
+        );
+    
+        for (const item of removedItems) {
+            db.deleteMediaFile(item.name);
+        }
+        
+        setMediaLibrary(newLibrary);
+        setPlaylist(newLibrary.filter(item => item.type === 'audio'));
+        
+        // Persist only non-uploaded items (links) to localStorage
+        const nonUploadedItems = newLibrary.filter(item => item.source !== 'upload');
+        localStorage.setItem('alex_media_library_links', JSON.stringify(nonUploadedItems));
+    }, [mediaLibrary]); // Depends on mediaLibrary to compare old and new states
 
-    // FIX: Reordered music player functions to ensure `playTrack` is declared before functions that use it.
     const playTrack = useCallback((track: MediaItem) => {
         setCurrentTrack(track);
         setTrackProgress({ currentTime: 0, duration: 0 });
@@ -814,27 +864,6 @@ const App: React.FC = () => {
         return result;
     }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles, currentConversationId, transcript, playlist, currentTrack, isPlaying, playTrack, handlePlayPause, handleNextTrack, handlePrevTrack, handleSaveMediaLibrary, playAudio]);
 
-    const endSession = useCallback(async () => {
-        if (isRecording) {
-            recorderRef.current?.stop();
-            setIsRecording(false);
-        }
-        if (sessionRef.current) {
-            await disconnectLiveSession(sessionRef.current, userAudioStreamRef.current, videoStreamRef.current);
-            sessionRef.current = null;
-            toggleOutputMuteRef.current = null;
-            userAudioStreamRef.current = null;
-            analyserRef.current = { input: null, output: null };
-            if(audioContextRef.current) {
-                audioContextRef.current.outputGain.disconnect();
-                audioContextRef.current = null;
-            }
-            setAgentStatus('idle');
-            if (isVideoEnabled) setIsVideoEnabled(false);
-            addNotification('Voice session ended.');
-        }
-    }, [addNotification, isVideoEnabled, isRecording]);
-
     const startSession = useCallback(async () => {
         try {
             setAgentStatus('recalling');
@@ -1000,6 +1029,33 @@ const App: React.FC = () => {
 
         setUploadedFiles(prev => [...prev, ...newFiles]);
         addNotification(`${newFiles.length} file(s) attached.`, 'success');
+    };
+
+    const handleMediaFileUpload = async (file: File) => {
+        const taskId = addBackgroundTask(`Uploading ${file.name}...`);
+        try {
+            const newMediaItem = await db.uploadMediaFile(file);
+            if (newMediaItem) {
+                // Use a function for setMediaLibrary to get the latest state
+                setMediaLibrary(prevLibrary => {
+                    const updatedLibrary = [...prevLibrary, newMediaItem];
+                    // Also update playlist and localStorage inside this updater
+                    setPlaylist(updatedLibrary.filter(item => item.type === 'audio'));
+                    const nonUploadedItems = updatedLibrary.filter(item => item.source !== 'upload');
+                    localStorage.setItem('alex_media_library_links', JSON.stringify(nonUploadedItems));
+                    return updatedLibrary;
+                });
+                updateBackgroundTask(taskId, `Successfully uploaded ${file.name}.`);
+            } else {
+                throw new Error('Upload failed to return media item.');
+            }
+        } catch (error) {
+            console.error('Media upload failed:', error);
+            addNotification(`Failed to upload ${file.name}.`, 'error');
+            updateBackgroundTask(taskId, `Upload failed for ${file.name}.`);
+        } finally {
+            removeBackgroundTask(taskId);
+        }
     };
 
     const handleSaveSystemPrompt = (prompt: string) => {
@@ -1291,6 +1347,7 @@ const App: React.FC = () => {
                     onSaveStoryAuth={handleSaveStoryAuth}
                     mediaLibrary={mediaLibrary}
                     onSaveMediaLibrary={handleSaveMediaLibrary}
+                    onMediaFileUpload={handleMediaFileUpload}
                     projectFiles={projectFiles}
                     onSaveProjectFiles={handleSaveProjectFiles}
                 />

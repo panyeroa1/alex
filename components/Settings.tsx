@@ -12,6 +12,7 @@ interface SettingsProps {
     onSaveStoryAuth: (config: { enabled: boolean; key: string | null; }) => void;
     mediaLibrary: MediaItem[];
     onSaveMediaLibrary: (library: MediaItem[]) => void;
+    onMediaFileUpload: (file: File) => Promise<void>;
     projectFiles: ProjectFile[];
     onSaveProjectFiles: (files: ProjectFile[]) => void;
 }
@@ -28,6 +29,9 @@ const fileToBase64 = (file: File): Promise<string> => {
     });
 };
 
+const LoadingSpinner: React.FC = () => (
+    <div className="w-5 h-5 border-2 border-white/50 border-t-white rounded-full animate-spin"></div>
+);
 
 export const Settings: React.FC<SettingsProps> = ({ 
     isOpen, 
@@ -39,6 +43,7 @@ export const Settings: React.FC<SettingsProps> = ({
     onSaveStoryAuth,
     mediaLibrary,
     onSaveMediaLibrary,
+    onMediaFileUpload,
     projectFiles,
     onSaveProjectFiles
 }) => {
@@ -47,7 +52,9 @@ export const Settings: React.FC<SettingsProps> = ({
     const [isIntegrationModalOpen, setIsIntegrationModalOpen] = useState(false);
     const [selectedIntegration, setSelectedIntegration] = useState('');
     const [newMediaItem, setNewMediaItem] = useState({ name: '', url: '', type: 'audio' as 'audio' | 'video' });
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const projectFileInputRef = useRef<HTMLInputElement>(null);
+    const mediaFileInputRef = useRef<HTMLInputElement>(null);
+    const [isUploading, setIsUploading] = useState(false);
     
     const [isClosing, setIsClosing] = useState(false);
 
@@ -86,6 +93,22 @@ export const Settings: React.FC<SettingsProps> = ({
 
     const handleRemoveMediaItem = (id: number) => {
         onSaveMediaLibrary(mediaLibrary.filter(item => item.id !== id));
+    };
+    
+    const handleLocalMediaUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        try {
+            await onMediaFileUpload(file);
+        } catch (error) {
+            console.error("Upload failed in settings:", error);
+        } finally {
+            setIsUploading(false);
+        }
+
+        if (event.target) event.target.value = ''; // Reset input
     };
 
     const handleStoryAuthKeyChange = (key: string) => {
@@ -204,9 +227,10 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div className="space-y-6">
                         <div>
                             <h3 className="text-xl font-semibold text-white/90">Media Library</h3>
-                            <p className="text-sm text-white/60">Add audio/video URLs for Alex to use with the `playMusic` function, or use the voice agent to add music from YouTube.</p>
+                            <p className="text-sm text-white/60">Add audio/video for Alex to use, either via direct URL or by uploading from your device.</p>
                         </div>
                         <div className="space-y-4 p-4 bg-white/5 rounded-lg border border-white/10">
+                            <h4 className="text-md font-semibold text-white/80 text-center">Add from URL</h4>
                              <input type="text" placeholder="Track Name" value={newMediaItem.name} onChange={(e) => setNewMediaItem(prev => ({ ...prev, name: e.target.value }))} className="w-full bg-black/30 text-white/90 p-2 rounded-md border border-white/20 focus:ring-1 focus:ring-blue-500 focus:outline-none" />
                              <input type="text" placeholder="Media URL" value={newMediaItem.url} onChange={(e) => setNewMediaItem(prev => ({ ...prev, url: e.target.value }))} className="w-full bg-black/30 text-white/90 p-2 rounded-md border border-white/20 focus:ring-1 focus:ring-blue-500 focus:outline-none" />
                              <select value={newMediaItem.type} onChange={(e) => setNewMediaItem(prev => ({ ...prev, type: e.target.value as 'audio' | 'video' }))} className="w-full bg-black/30 text-white/90 p-2 rounded-md border border-white/20 focus:ring-1 focus:ring-blue-500 focus:outline-none">
@@ -214,6 +238,19 @@ export const Settings: React.FC<SettingsProps> = ({
                                 <option value="video">Video</option>
                              </select>
                              <button onClick={handleAddMediaItem} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full transition-all text-sm">Add URL to Library</button>
+                             
+                             <div className="relative flex items-center py-2">
+                                <hr className="w-full border-t border-white/10" />
+                                <span className="absolute left-1/2 -translate-x-1/2 bg-gray-900 px-2 text-xs text-white/50 uppercase" style={{ background: '#1a1a1a' }}>Or</span>
+                            </div>
+
+                            <input type="file" ref={mediaFileInputRef} className="hidden" onChange={handleLocalMediaUpload} accept="audio/*,video/*" />
+                            <button onClick={() => mediaFileInputRef.current?.click()} disabled={isUploading} className="w-full bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-full transition-all text-sm flex justify-center items-center gap-2">
+                                {isUploading ? <LoadingSpinner /> : (
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                )}
+                                <span>{isUploading ? 'Uploading...' : 'Upload from Device'}</span>
+                            </button>
                         </div>
                         <div className="space-y-2">
                            {mediaLibrary.length === 0 && <p className="text-center text-white/50 text-sm">Your library is empty.</p>}
@@ -221,7 +258,11 @@ export const Settings: React.FC<SettingsProps> = ({
                                <div key={item.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg text-sm">
                                    <div className='truncate mr-4 flex items-center gap-3'>
                                        <span className="font-semibold">{item.name}</span>
-                                       <span className={`text-xs px-2 py-0.5 rounded-full ${item.source === 'youtube' ? 'bg-red-500/20 text-red-300' : 'bg-gray-500/20 text-gray-300'}`}>{item.source === 'youtube' ? 'YouTube' : 'URL'}</span>
+                                       <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                            item.source === 'youtube' ? 'bg-red-500/20 text-red-300' 
+                                            : item.source === 'upload' ? 'bg-green-500/20 text-green-300'
+                                            : 'bg-gray-500/20 text-gray-300'}`
+                                        }>{item.source || 'url'}</span>
                                    </div>
                                    <button onClick={() => handleRemoveMediaItem(item.id)} className="text-red-400 hover:text-red-300 p-1 rounded-full hover:bg-white/10 text-xs flex-shrink-0">Remove</button>
                                </div>
@@ -240,12 +281,12 @@ export const Settings: React.FC<SettingsProps> = ({
                             <input
                                 type="file"
                                 multiple
-                                ref={fileInputRef}
+                                ref={projectFileInputRef}
                                 className="hidden"
                                 onChange={handleProjectFileUpload}
                             />
                             <button
-                                onClick={() => fileInputRef.current?.click()}
+                                onClick={() => projectFileInputRef.current?.click()}
                                 className="w-full text-center py-4 px-6 border-2 border-dashed border-white/20 rounded-lg hover:bg-white/5 hover:border-white/40 transition-colors"
                             >
                                 <span className="text-blue-400 font-semibold">Click to upload</span> or drag and drop
