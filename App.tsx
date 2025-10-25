@@ -613,19 +613,17 @@ const App: React.FC = () => {
                     updateBackgroundTask(taskId, `Analyzing song: ${fileName}...`);
                     
                     try {
+                        let analysisContent: string;
+                        
                         // Try to get the actual audio blob
                         const audioBlob = audioBlobsRef.current.get(fileName);
                         
                         if (audioBlob) {
                             // Use the real analyzeSong function
-                            const analysis = await analyzeSong(audioBlob);
-                            result = `**Song Analysis for "${fileName}"**\n\n${analysis}\n\nSige Boss, yan ang detailed analysis ng song. Any specific aspect you want me to dive deeper into?`;
-                            updateTranscript('alex', result);
+                            analysisContent = await analyzeSong(audioBlob);
                         } else {
                             // Fallback to simulated analysis if blob is not available
-                            const analysis = `**Song Analysis for "${fileName}"**
-
-**Tempo & Rhythm**: Moderate tempo at approximately 120 BPM, 4/4 time signature with steady beat
+                            analysisContent = `**Tempo & Rhythm**: Moderate tempo at approximately 120 BPM, 4/4 time signature with steady beat
 
 **Key & Harmony**: Key of C Major, standard pop chord progression (I-V-vi-IV)
 
@@ -641,13 +639,11 @@ const App: React.FC = () => {
 
 **Song Structure**: Intro-Verse-Chorus-Verse-Chorus-Bridge-Chorus arrangement
 
-**Overall Assessment**: Well-produced track with commercial appeal and solid songwriting
-
-Sige Boss, yan ang detailed analysis ng song. Any specific aspect you want me to dive deeper into?`;
-                            
-                            result = analysis;
-                            updateTranscript('alex', analysis);
+**Overall Assessment**: Well-produced track with commercial appeal and solid songwriting`;
                         }
+                        
+                        result = `**Song Analysis for "${fileName}"**\n\n${analysisContent}\n\nSige Boss, yan ang detailed analysis ng song. Any specific aspect you want me to dive deeper into?`;
+                        updateTranscript('alex', result);
                     } catch (error: any) {
                         result = `Sorry Boss, may problema sa pag-analyze ng song: ${error.message}`;
                     }
@@ -873,25 +869,24 @@ Sige Boss, yan ang detailed analysis ng song. Any specific aspect you want me to
     
     const handleFileUpload = (files: FileList | null) => {
         if (!files) return;
-        const audioFiles: File[] = [];
-        const otherFiles: UploadedFile[] = [];
+        const uploadedFilesList: UploadedFile[] = [];
+        
         Array.from(files).forEach(file => {
+            // Add all files to the uploaded files list
+            uploadedFilesList.push({ name: file.name, type: file.type, size: file.size });
+            
+            // For audio files, store the blob and analyze as app idea
             if (file.type.startsWith('audio/')) {
-                audioFiles.push(file);
-                // Also add audio files to uploaded files so they can be analyzed as songs
-                otherFiles.push({ name: file.name, type: file.type, size: file.size });
-                // Store the audio blob for later song analysis
                 audioBlobsRef.current.set(file.name, file);
-            } else {
-                otherFiles.push({ name: file.name, type: file.type, size: file.size });
+                // Analyze audio files as app ideas by default (File extends Blob, no need to wrap)
+                handleAudioAnalysis(file, file.name);
             }
         });
-        if (otherFiles.length > 0) {
-            setUploadedFiles(prev => [...prev, ...otherFiles]);
-            addNotification(`${otherFiles.length} file(s) attached.`, 'success');
+        
+        if (uploadedFilesList.length > 0) {
+            setUploadedFiles(prev => [...prev, ...uploadedFilesList]);
+            addNotification(`${uploadedFilesList.length} file(s) attached.`, 'success');
         }
-        // Still analyze audio files as app ideas by default
-        audioFiles.forEach(async (file) => handleAudioAnalysis(new Blob([file], { type: file.type }), file.name));
     };
 
     const handleSaveSystemPrompt = (prompt: string) => {
