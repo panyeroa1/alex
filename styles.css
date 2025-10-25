@@ -123,19 +123,46 @@ $shadows-big:    multiple-box-shadow(100);
 .animate-pulse-mini-fast { animation: pulse-mini 1s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 
 /* Luto Character Animations */
-@keyframes luto-float {
-    0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-10px); }
+@keyframes luto-hover {
+    0%, 100% { transform: translate(0, 0) rotate(0deg); }
+    25% { transform: translate(1px, -8px) rotate(-0.5deg); }
+    50% { transform: translate(0, 0) rotate(0deg); }
+    75% { transform: translate(-1px, -8px) rotate(0.5deg); }
 }
-.animate-luto-float { animation: luto-float 6s ease-in-out infinite; }
+.animate-luto-hover { animation: luto-hover 8s ease-in-out infinite; }
 
-@keyframes luto-speak {
-    0%, 100% { transform: scaleY(1); }
-    20% { transform: scaleY(0.2); }
-    50% { transform: scaleY(0.8); }
-    80% { transform: scaleY(0.3); }
+@keyframes luto-eye-listen {
+    0%, 100% { opacity: 1; transform: scale(1, 1); }
+    50% { opacity: 0.8; transform: scale(1.05, 1.1); }
 }
-.animate-luto-speak { animation: luto-speak 0.5s ease-in-out infinite; }
+.animate-luto-eye-listen { animation: luto-eye-listen 2s ease-in-out infinite; }
+
+@keyframes luto-antenna-twitch {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(-10deg); }
+}
+.animate-luto-antenna-twitch { animation: luto-antenna-twitch 1.5s ease-in-out infinite; transform-origin: 100px 25px; }
+
+
+@keyframes luto-mouth-speak {
+    0%, 100% { transform: scaleY(0.2); opacity: 0.8; }
+    20% { transform: scaleY(1.2); opacity: 1; }
+    50% { transform: scaleY(0.6); opacity: 1; }
+    80% { transform: scaleY(1.0); opacity: 1; }
+}
+.animate-luto-mouth-speak { animation: luto-mouth-speak 0.4s ease-in-out infinite; transform-origin: center; }
+
+@keyframes luto-eye-execute {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-5px); }
+}
+.animate-luto-eye-execute { animation: luto-eye-execute 0.5s ease-in-out infinite; }
+
+@keyframes luto-visor-flash {
+    0%, 100% { opacity: 0; }
+    50% { opacity: 0.3; }
+}
+.animate-luto-visor-flash { animation: luto-visor-flash 1s ease-in-out infinite; }
 
 
 /* --- Custom Scrollbar --- */

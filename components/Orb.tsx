@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React from 'react';
 import type { AgentStatus } from '../types';
 
 interface LutoProps {
@@ -31,65 +31,87 @@ const MiniLuto: React.FC<{ status: AgentStatus }> = ({ status }) => {
 };
 
 
-export const Luto: React.FC<LutoProps> = ({ status, analyserNode }) => {
+export const Luto: React.FC<LutoProps> = ({ status }) => {
     const isSpeaking = status === 'speaking';
     const isListening = status === 'listening';
     const isExecuting = status === 'executing';
     const isConnecting = status === 'connecting';
     const isVerifying = status === 'verifying';
 
-    const getEyeClassName = () => {
-        if (isSpeaking) return 'animate-luto-speak';
-        if (isListening) return 'scale-y-125';
+    const getEyeClass = () => {
+        if (isListening) return 'animate-luto-eye-listen';
+        if (isExecuting) return 'animate-luto-eye-execute';
         return '';
     };
 
+    const getMouthClass = () => {
+        if (isSpeaking) return 'animate-luto-mouth-speak';
+        return 'opacity-0';
+    };
+    
     return (
         <div className="w-full h-full relative flex items-center justify-center">
             {/* Luto SVG Character */}
-            <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-lg animate-luto-float">
+            <svg viewBox="0 0 150 150" className="w-full h-full drop-shadow-lg animate-luto-hover">
                 <defs>
-                    <radialGradient id="luto-grad" cx="0.5" cy="0.5" r="0.5">
-                        <stop offset="0%" stopColor="#d1d5db" />
-                        <stop offset="100%" stopColor="#6b7280" />
+                    <radialGradient id="luto-body-grad" cx="50%" cy="0%" r="100%">
+                        <stop offset="0%" stopColor="#AAB5C4" />
+                        <stop offset="100%" stopColor="#4A5568" />
                     </radialGradient>
-                    <filter id="glow">
-                        <feGaussianBlur stdDeviation="3.5" result="coloredBlur" />
+                     <linearGradient id="luto-visor-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#2D3748" />
+                        <stop offset="100%" stopColor="#1A202C" />
+                    </linearGradient>
+                    <filter id="luto-glow" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation="5" result="coloredBlur" />
                         <feMerge>
                             <feMergeNode in="coloredBlur" />
                             <feMergeNode in="SourceGraphic" />
                         </feMerge>
                     </filter>
+                    <clipPath id="visor-clip">
+                        <path d="M 40 55 C 40 40, 110 40, 110 55 L 110 85 C 110 100, 40 100, 40 85 Z" />
+                    </clipPath>
                 </defs>
 
-                {/* Body */}
-                <path d="M 20 50 A 30 35 0 0 1 80 50 L 80 70 A 30 35 0 0 1 20 70 Z" fill="url(#luto-grad)" filter="url(#glow)" />
-                
-                {/* Eyes container */}
-                <g transform="translate(0, 2)">
-                    {/* Left Eye */}
-                    <g transform="translate(35, 50)">
-                        <path d="M -10 0 a 10 12 0 1 1 20 0 a 10 12 0 1 1 -20 0" fill="#111827" />
-                        <ellipse cx="0" cy="0" rx="7" ry="9" fill="#0ea5e9" className={`transition-transform duration-200 ${getEyeClassName()}`}>
-                             {isExecuting && <animate attributeName="fill" values="#0ea5e9;#f59e0b;#0ea5e9" dur="1.5s" repeatCount="indefinite" />}
-                        </ellipse>
-                        <circle cx="0" cy="0" r="2" fill="white" className="opacity-70" />
-                    </g>
-                    {/* Right Eye */}
-                     <g transform="translate(65, 50)">
-                        <path d="M -10 0 a 10 12 0 1 1 20 0 a 10 12 0 1 1 -20 0" fill="#111827" />
-                        <ellipse cx="0" cy="0" rx="7" ry="9" fill="#0ea5e9" className={`transition-transform duration-200 ${getEyeClassName()}`}>
-                            {isExecuting && <animate attributeName="fill" values="#0ea5e9;#f59e0b;#0ea5e9" dur="1.5s" repeatCount="indefinite" />}
-                        </ellipse>
-                        <circle cx="0" cy="0" r="2" fill="white" className="opacity-70" />
-                    </g>
+                {/* Main Body */}
+                <g>
+                    {/* Head */}
+                    <path d="M 50 25 C 25 25, 25 75, 50 75 L 100 75 C 125 75, 125 25, 100 25 Z" fill="url(#luto-body-grad)" />
+                    {/* Body */}
+                    <path d="M 55 70 C 40 70, 40 120, 55 120 L 95 120 C 110 120, 110 70, 95 70 Z" fill="#4A5568" />
+                    {/* Neck */}
+                     <rect x="65" y="65" width="20" height="10" fill="#3A4454" />
                 </g>
 
-                 {/* Verifying/Connecting Indicator */}
+                {/* Visor */}
+                <g>
+                    <path d="M 40 55 C 40 40, 110 40, 110 55 L 110 85 C 110 100, 40 100, 40 85 Z" fill="url(#luto-visor-grad)" />
+                    { isExecuting && <path d="M 40 55 C 40 40, 110 40, 110 55 L 110 85 C 110 100, 40 100, 40 85 Z" fill="#F59E0B" className="opacity-0 animate-luto-visor-flash" /> }
+                </g>
+
+                {/* Eyes & Mouth */}
+                <g clipPath="url(#visor-clip)">
+                    {/* Eyes */}
+                    <g className={getEyeClass()}>
+                        <rect x="50" y="60" width="15" height="20" rx="7.5" fill="#38BDF8" filter="url(#luto-glow)" />
+                        <rect x="85" y="60" width="15" height="20" rx="7.5" fill="#38BDF8" filter="url(#luto-glow)" />
+                    </g>
+                    {/* Mouth */}
+                    <rect x="60" y="90" width="30" height="5" rx="2.5" fill="#38BDF8" filter="url(#luto-glow)" className={`transition-opacity duration-200 ${getMouthClass()}`} />
+                </g>
+
+                 {/* Antenna */}
+                <g className={isListening ? 'animate-luto-antenna-twitch' : ''}>
+                    <line x1="100" y1="25" x2="110" y2="15" stroke="#AAB5C4" strokeWidth="3" />
+                    <circle cx="110" cy="15" r="3" fill="#38BDF8" />
+                </g>
+
+                 {/* Chest Light (Connecting/Verifying) */}
                  {(isVerifying || isConnecting) && (
-                     <circle cx="50" cy="55" r="3" fill="#facc15">
-                        <animate attributeName="r" from="3" to="8" dur="1s" begin="0s" repeatCount="indefinite" />
-                        <animate attributeName="opacity" from="1" to="0" dur="1s" begin="0s" repeatCount="indefinite" />
+                     <circle cx="75" cy="95" r="5" fill="#facc15" filter="url(#luto-glow)">
+                        <animate attributeName="r" from="5" to="12" dur="1.2s" begin="0s" repeatCount="indefinite" />
+                        <animate attributeName="opacity" from="1" to="0" dur="1.2s" begin="0s" repeatCount="indefinite" />
                      </circle>
                  )}
             </svg>

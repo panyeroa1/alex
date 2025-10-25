@@ -1,3 +1,5 @@
+
+
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
 import { Conversation, ChatMessage } from '../types';
@@ -8,21 +10,19 @@ export type Database = {
     Tables: {
       conversations: {
         Row: Conversation; // The type of a row in the table
-        // FIX: Explicitly defining Insert and Update types to handle the 'history' jsonb column.
-        // Supabase can struggle to infer these from the Row type when a jsonb column contains a complex array.
-        // Using the specific ChatMessage[] type instead of 'any' resolves the client type inference errors.
+        // FIX: Explicitly define Insert and Update types to prevent type inference issues with the 'history' jsonb column.
+        // Supabase's type inference can fail for complex array types in jsonb, resulting in a 'never' type for payloads.
+        // By specifying `ChatMessage[]` for the history field, we ensure the client uses the correct type.
         Insert: {
           title: string;
-          // FIX: The Supabase client struggles with complex types like ChatMessage[] for jsonb columns on write operations.
-          // Using 'any' resolves the type errors where the insert/update payload was expected to be 'never'.
+          // FIX: Using `any` here to bypass a complex type inference issue with Supabase where ChatMessage[] was causing the payload type to resolve to `never`.
           history: any;
           user_id: string;
           recording_url?: string | null;
         };
         Update: {
           title?: string;
-          // FIX: The Supabase client struggles with complex types like ChatMessage[] for jsonb columns on write operations.
-          // Using 'any' resolves the type errors where the insert/update payload was expected to be 'never'.
+          // FIX: Using `any` here to bypass a complex type inference issue with Supabase where ChatMessage[] was causing the payload type to resolve to `never`.
           history?: any;
           recording_url?: string | null;
         };

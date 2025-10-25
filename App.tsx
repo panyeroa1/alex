@@ -895,7 +895,7 @@ const App: React.FC = () => {
                     ))}
                 </div>
 
-                <header className="absolute top-4 left-4 right-4 z-10 flex items-center justify-between">
+                <header className="fixed top-4 left-4 right-4 z-10 flex items-center justify-between">
                      <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Open Conversation History">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                     </button>
@@ -926,7 +926,7 @@ const App: React.FC = () => {
                         </button>
                     </div>
                     {showCc && (
-                        <div className="absolute bottom-28 md:bottom-24 left-4 right-4 z-20 h-32 md:h-48 bg-black/30 backdrop-blur-sm rounded-lg p-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent">
+                        <div className="absolute bottom-28 md:bottom-32 left-4 right-4 z-20 h-32 md:h-48 bg-black/30 backdrop-blur-sm rounded-lg p-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent">
                             {transcript.map((msg) => (
                                 <div key={msg.id} className="text-left mb-2">
                                     <span className={`font-bold ${msg.speaker === 'alex' ? 'text-blue-300' : 'text-green-300'}`}>{msg.speaker === 'alex' ? 'Alex' : 'You'}: </span>
@@ -937,7 +937,7 @@ const App: React.FC = () => {
                     )}
                 </main>
                 
-                <footer className="absolute bottom-0 left-0 right-0 p-4 md:p-6 z-10">
+                <footer className="fixed bottom-0 left-0 right-0 p-4 md:p-6 z-10">
                     <div className="flex justify-around items-center max-w-xs md:max-w-sm mx-auto bg-black/20 backdrop-blur-md p-2 rounded-full">
                         <button onClick={handleToggleVideo} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all hover:scale-110 active:scale-100 ${isVideoEnabled ? 'bg-blue-500/50 hover:bg-blue-500/70' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isVideoEnabled ? "Turn off Video" : "Turn on Video"}>
                             {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6Z"/><path d="m2 5 1-1h10l1 1v10l-1 1H3l-1-1Z"/><path d="m2 14 3-3 2 2 3-3 2 2"/></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6Z"/><path d="M2 5h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/></svg>}
