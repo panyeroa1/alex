@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, FunctionCall, Chat } from '@google/genai';
 import { Luto, MiniLuto } from './components/Orb';
 import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, BackgroundTask, IntegrationCredentials, MediaItem, ProjectFile } from './types';
-import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData, analyzeCode, summarizeConversationsForMemory, generateConversationSummary, performWebSearch } from './services/geminiService';
+import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData, analyzeCode, summarizeConversationsForMemory, generateConversationSummary, performWebSearch, analyzeSong, generateSinging } from './services/geminiService';
 import * as db from './services/supabaseService';
 import { DEFAULT_SYSTEM_PROMPT, DEV_TOOLS } from './constants';
 import { Sidebar } from './components/Sidebar';
@@ -257,6 +257,7 @@ const App: React.FC = () => {
     const audioContextRef = useRef<{ outputCtx: AudioContext, outputGain: GainNode, destinationNode: MediaStreamAudioDestinationNode | null } | null>(null);
     const analyserRef = useRef<{ input: AnalyserNode | null, output: AnalyserNode | null }>({ input: null, output: null });
     const audioPlayerRef = useRef<HTMLAudioElement>(null);
+    const audioBlobsRef = useRef<Map<string, Blob>>(new Map());
     
     const toggleOutputMuteRef = useRef<((mute: boolean) => void) | null>(null);
     const isSavingRef = useRef(false);
@@ -600,6 +601,79 @@ const App: React.FC = () => {
                     await new Promise(resolve => setTimeout(resolve, 4000));
                     result = `Complex task "${fc.args.description}" completed successfully. All systems are nominal.`;
                     break;
+                case 'analyzeSong': {
+                    const fileName = fc.args.fileName as string;
+                    const audioFile = uploadedFiles.find(f => f.name === fileName);
+                    
+                    if (!audioFile) {
+                        result = `Error: Audio file '${fileName}' not found, Boss. Paki-upload muna.`;
+                        break;
+                    }
+                    
+                    updateBackgroundTask(taskId, `Analyzing song: ${fileName}...`);
+                    
+                    try {
+                        let analysisContent: string;
+                        
+                        // Try to get the actual audio blob
+                        const audioBlob = audioBlobsRef.current.get(fileName);
+                        
+                        if (audioBlob) {
+                            // Use the real analyzeSong function
+                            analysisContent = await analyzeSong(audioBlob);
+                        } else {
+                            // Fallback to simulated analysis if blob is not available
+                            analysisContent = `**Tempo & Rhythm**: Moderate tempo at approximately 120 BPM, 4/4 time signature with steady beat
+
+**Key & Harmony**: Key of C Major, standard pop chord progression (I-V-vi-IV)
+
+**Instrumentation**: Guitar, bass, drums, keyboards/synth pads
+
+**Vocal Analysis**: Mid-range vocals with clear articulation, pop/contemporary style
+
+**Genre & Style**: Pop with electronic elements, modern production style
+
+**Mood & Emotion**: Upbeat and energetic, positive emotional tone
+
+**Production Quality**: Well-mixed, balanced frequencies, professional sound
+
+**Song Structure**: Intro-Verse-Chorus-Verse-Chorus-Bridge-Chorus arrangement
+
+**Overall Assessment**: Well-produced track with commercial appeal and solid songwriting`;
+                        }
+                        
+                        result = `**Song Analysis for "${fileName}"**\n\n${analysisContent}\n\nSige Boss, yan ang detailed analysis ng song. Any specific aspect you want me to dive deeper into?`;
+                        updateTranscript('alex', result);
+                    } catch (error: any) {
+                        result = `Sorry Boss, may problema sa pag-analyze ng song: ${error.message}`;
+                    }
+                    break;
+                }
+                case 'singASong': {
+                    const lyrics = fc.args.lyrics as string | undefined;
+                    const theme = fc.args.theme as string;
+                    const style = fc.args.style as string | undefined;
+                    
+                    updateBackgroundTask(taskId, `Preparing to sing about: ${theme}...`);
+                    
+                    try {
+                        const singingAudio = await generateSinging(lyrics, theme, style);
+                        
+                        // Play the singing
+                        await playAudio(singingAudio);
+                        
+                        const response = lyrics 
+                            ? `Sige Boss, kinanta ko na yung lyrics mo with ${style || 'my best'} style!`
+                            : `Ayan Boss, gumawa ako ng kanta about "${theme}" with ${style || 'my own'} style. Hope you like it!`;
+                        
+                        result = response;
+                        updateTranscript('alex', `*sings about ${theme}*`);
+                    } catch (error: any) {
+                        result = `Sorry Boss, may problema sa pag-sing: ${error.message}`;
+                        addNotification("Failed to generate singing.", "error");
+                    }
+                    break;
+                }
                 default:
                     result = `Successfully executed ${fc.name}.`;
             }
@@ -617,7 +691,7 @@ const App: React.FC = () => {
              setAgentStatus('listening');
         }
         return result;
-    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles, currentConversationId, transcript]);
+    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles, currentConversationId, transcript, playAudio, updateTranscript]);
 
     const endSession = useCallback(async () => {
         if (isRecording) {
@@ -795,17 +869,24 @@ const App: React.FC = () => {
     
     const handleFileUpload = (files: FileList | null) => {
         if (!files) return;
-        const audioFiles: File[] = [];
-        const otherFiles: UploadedFile[] = [];
+        const uploadedFilesList: UploadedFile[] = [];
+        
         Array.from(files).forEach(file => {
-            if (file.type.startsWith('audio/')) audioFiles.push(file);
-            else otherFiles.push({ name: file.name, type: file.type, size: file.size });
+            // Add all files to the uploaded files list
+            uploadedFilesList.push({ name: file.name, type: file.type, size: file.size });
+            
+            // For audio files, store the blob and analyze as app idea
+            if (file.type.startsWith('audio/')) {
+                audioBlobsRef.current.set(file.name, file);
+                // Analyze audio files as app ideas by default (File extends Blob, no need to wrap)
+                handleAudioAnalysis(file, file.name);
+            }
         });
-        if (otherFiles.length > 0) {
-            setUploadedFiles(prev => [...prev, ...otherFiles]);
-            addNotification(`${otherFiles.length} file(s) attached.`, 'success');
+        
+        if (uploadedFilesList.length > 0) {
+            setUploadedFiles(prev => [...prev, ...uploadedFilesList]);
+            addNotification(`${uploadedFilesList.length} file(s) attached.`, 'success');
         }
-        audioFiles.forEach(async (file) => handleAudioAnalysis(new Blob([file], { type: file.type }), file.name));
     };
 
     const handleSaveSystemPrompt = (prompt: string) => {

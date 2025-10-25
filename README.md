@@ -8,6 +8,14 @@ This contains everything you need to run your app locally.
 
 View your app in AI Studio: https://ai.studio/apps/drive/1Z4VT6xD2VvsApDyo4Mgnzxdg5igsFIpK
 
+## New Features 🎵
+
+Alex now has **song analysis** and **singing capabilities**! 
+- Analyze audio files for tempo, key, mood, instrumentation, and more
+- Ask Alex to sing songs with custom lyrics or themes in different styles
+
+See [SONG_FEATURES.md](SONG_FEATURES.md) for detailed documentation.
+
 ## Run Locally
 
 **Prerequisites:**  Node.js

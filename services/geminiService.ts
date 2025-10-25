@@ -494,3 +494,80 @@ Begin your report now.
         return `Error: Could not analyze the code for ${fileName}.`;
     }
 }
+
+export async function analyzeSong(audioBlob: globalThis.Blob): Promise<string> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const audioBase64 = await blobToBase64(audioBlob);
+
+    const audioPart = {
+        inlineData: {
+            mimeType: audioBlob.type || 'audio/webm',
+            data: audioBase64,
+        },
+    };
+
+    const textPart = {
+        text: `You are an expert music analyst and producer. Analyze the following audio/song file in detail. Provide a comprehensive analysis covering:
+
+1. **Tempo & Rhythm**: BPM (beats per minute), time signature, rhythmic patterns
+2. **Key & Harmony**: Musical key, chord progressions, harmonic structure
+3. **Instrumentation**: Identified instruments and their roles
+4. **Vocal Analysis**: Vocal range, singing style, vocal techniques (if vocals present)
+5. **Genre & Style**: Primary and secondary genres, musical influences
+6. **Mood & Emotion**: Emotional tone, atmosphere, energy level
+7. **Production Quality**: Mix quality, sound design, production techniques
+8. **Song Structure**: Verse-chorus structure, arrangement, transitions
+9. **Lyrics Analysis**: Themes, storytelling, lyrical content (if lyrics are audible)
+10. **Overall Assessment**: Strengths, weaknesses, and notable characteristics
+
+Be detailed and professional in your analysis.`
+    };
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts: [textPart, audioPart] },
+        });
+        return response.text;
+    } catch (error) {
+        console.error("Song analysis failed:", error);
+        return "Sorry Boss, I couldn't analyze the song. There might be an issue with the audio format or file.";
+    }
+}
+
+export async function generateSinging(lyrics: string | undefined, theme: string, style: string | undefined): Promise<string> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    // Create lyrics if not provided
+    let finalLyrics = lyrics;
+    if (!finalLyrics) {
+        const lyricPrompt = `Create short, catchy song lyrics (4-8 lines) based on the theme: "${theme}". The style should be ${style || 'upbeat and engaging'}. Make it fun and memorable.`;
+        const lyricResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: lyricPrompt,
+        });
+        finalLyrics = lyricResponse.text;
+    }
+
+    // Generate expressive singing with enhanced prompting for musicality
+    const singingText = `*singing ${style || 'expressively'}* ${finalLyrics} *end singing*`;
+    
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: singingText }] }],
+        config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+                voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: 'Charon' },
+                },
+            },
+        },
+    });
+    
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!base64Audio) {
+        throw new Error("Failed to generate singing audio.");
+    }
+    return base64Audio;
+}
