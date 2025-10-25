@@ -194,6 +194,27 @@ const App: React.FC = () => {
     const toggleOutputMuteRef = useRef<((mute: boolean) => void) | null>(null);
     const isSavingRef = useRef(false);
 
+    const addNotification = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+        const id = Date.now();
+        setNotifications(prev => [...prev, { id, message, type }]);
+        setTimeout(() => {
+            setNotifications(prev => prev.filter(n => n.id !== id));
+        }, 5000);
+    }, []);
+
+    const handleNewConversation = useCallback(async (closeSidebar = true) => {
+        if (sessionRef.current) await endSession();
+        const newConvo = await db.createConversation();
+        const allConvos = await db.getConversations();
+        setConversations(allConvos);
+        setCurrentConversationId(newConvo.id);
+        setTranscript([]);
+        setUploadedFiles([]);
+        chatRef.current = null;
+        if(closeSidebar) setIsSidebarOpen(false);
+    }, []); // Dependencies will be complex, for now let's keep it simple as it's a fix
+
+
     useEffect(() => {
         const enrolled = localStorage.getItem('alex_biometrics_enrolled') === 'true';
         setIsEnrolled(enrolled);
@@ -204,22 +225,28 @@ const App: React.FC = () => {
         const savedIntegrations = localStorage.getItem('alex_integrations');
         if (savedIntegrations) setIntegrations(JSON.parse(savedIntegrations));
 
-        const loadData = async () => {
-            const convos = await db.getConversations();
-            setConversations(convos);
-            if (convos.length > 0) {
-                const latestConvo = convos[0];
-                setCurrentConversationId(latestConvo.id);
-                setTranscript(latestConvo.history);
-            } else {
-                handleNewConversation(false);
+        const initializeApp = async () => {
+            try {
+                await db.signInAnonymouslyIfNeeded();
+                const convos = await db.getConversations();
+                setConversations(convos);
+                if (convos.length > 0) {
+                    const latestConvo = convos[0];
+                    setCurrentConversationId(latestConvo.id);
+                    setTranscript(latestConvo.history);
+                } else {
+                    await handleNewConversation(false);
+                }
+            } catch (error) {
+                console.error("Initialization failed:", error);
+                addNotification("Failed to initialize the app.", "error");
             }
         };
 
         if (enrolled) {
-            loadData();
+            initializeApp();
         }
-    }, [isEnrolled]);
+    }, [isEnrolled, addNotification, handleNewConversation]);
 
     useEffect(() => {
         if (currentConversationId && transcript.length > 0 && !isSavingRef.current) {
@@ -235,14 +262,6 @@ const App: React.FC = () => {
         setIsEnrolled(true);
         addNotification('Voiceprint enrolled successfully.', 'success');
     };
-
-    const addNotification = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
-        const id = Date.now();
-        setNotifications(prev => [...prev, { id, message, type }]);
-        setTimeout(() => {
-            setNotifications(prev => prev.filter(n => n.id !== id));
-        }, 5000);
-    }, []);
     
     const addBackgroundTask = useCallback((message: string): number => {
         const id = Date.now();
@@ -517,17 +536,6 @@ const App: React.FC = () => {
         }
     }, [isRecording, addNotification, currentConversationId, handleAudioAnalysis]);
 
-    const handleNewConversation = async (closeSidebar = true) => {
-        await endSession();
-        const newConvo = await db.createConversation();
-        const allConvos = await db.getConversations();
-        setConversations(allConvos);
-        setCurrentConversationId(newConvo.id);
-        setTranscript([]);
-        setUploadedFiles([]);
-        chatRef.current = null;
-        if(closeSidebar) setIsSidebarOpen(false);
-    };
 
     const handleSelectConversation = async (id: string) => {
         if (id === currentConversationId) {
@@ -644,7 +652,7 @@ const App: React.FC = () => {
                 currentConversationId={currentConversationId}
                 onClose={() => setIsSidebarOpen(false)}
                 onSelectConversation={handleSelectConversation}
-                onNewConversation={handleNewConversation}
+                onNewConversation={() => handleNewConversation()}
             />
             <Settings 
                 isOpen={isSettingsOpen} 
@@ -702,7 +710,7 @@ const App: React.FC = () => {
 
                 <main className="absolute inset-0 flex items-center justify-center">
                     <div className="w-64 h-64 md:w-80 md:h-80 z-10">
-                        <button onClick={toggleSession} disabled={agentStatus === 'connecting'} className="w-full h-full rounded-full transition-transform duration-300 ease-in-out hover:scale-105 focus:outline-none relative disabled:opacity-50 disabled:scale-100 group" aria-label={sessionRef.current ? 'Interaction in progress' : 'Start Session'}>
+                        <button onClick={toggleSession} disabled={agentStatus === 'connecting' || agentStatus === 'verifying'} className="w-full h-full rounded-full transition-transform duration-300 ease-in-out hover:scale-105 focus:outline-none relative disabled:opacity-50 disabled:scale-100 group" aria-label={sessionRef.current ? 'Interaction in progress' : 'Start Session'}>
                             <Orb status={agentStatus} analyserNode={currentAnalyser} />
                         </button>
                     </div>
@@ -724,7 +732,7 @@ const App: React.FC = () => {
                             {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6Z"/><path d="m2 5 1-1h10l1 1v10l-1 1H3l-1-1Z"/><path d="m2 14 3-3 2 2 3-3 2 2"/></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6Z"/><path d="M2 5h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/></svg>}
                         </button>
                         <button onClick={handleToggleScreenShare} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${isScreenSharing ? 'bg-blue-500/50 hover:bg-blue-500/70' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isScreenSharing ? "Stop Sharing Screen" : "Share Screen"}>
-                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 17a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16z"/><path d="M12 11v-4"/><path d="m9 10 3-3 3 3"/></svg>
+                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 17a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16z"/><path d="M12 11v-4"/><path d="m9 10 3-3 3 3"/></svg>
                         </button>
                         <button onClick={handleToggleRecording} disabled={agentStatus === 'idle' || agentStatus === 'connecting' || agentStatus === 'verifying'} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${isRecording ? 'bg-red-600/80 animate-pulse-record' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isRecording ? "Stop Recording" : "Start Recording"}>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="currentColor" className="text-white"><circle cx="12" cy="12" r="10"></circle></svg>

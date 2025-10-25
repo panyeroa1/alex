@@ -12,15 +12,15 @@ export type Database = {
         // Supabase was incorrectly inferring the types as `never`.
         Insert: {
           title: string;
-          // FIX: Use 'ChatMessage[]' to provide a concrete type for the jsonb column, resolving inference issues.
-          history: ChatMessage[];
+          // FIX: Use 'any[]' to provide a concrete type for the jsonb column, resolving inference issues.
+          history: any[];
           user_id: string;
           recording_url?: string | null;
         };
         Update: {
           title?: string;
-          // FIX: Use 'ChatMessage[]' to provide a concrete type for the jsonb column, resolving inference issues.
-          history?: ChatMessage[];
+          // FIX: Use 'any[]' to provide a concrete type for the jsonb column, resolving inference issues.
+          history?: any[];
           recording_url?: string | null;
         };
       };

@@ -1,6 +1,17 @@
 import { supabase } from './supabase';
 import { ChatMessage, Conversation } from '../types';
 
+export const signInAnonymouslyIfNeeded = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+        const { error } = await supabase.auth.signInAnonymously();
+        if (error) {
+            console.error("Error signing in anonymously:", error);
+            throw new Error("Could not authenticate user.");
+        }
+    }
+};
+
 export const getConversations = async (): Promise<Conversation[]> => {
     const { data, error } = await supabase
         .from('conversations')
