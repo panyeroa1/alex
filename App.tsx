@@ -254,6 +254,7 @@ const App: React.FC = () => {
     const [mediaLibrary, setMediaLibrary] = useState<MediaItem[]>([]);
     const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
     const [isPyodideReady, setIsPyodideReady] = useState(false);
+    const [pendingAction, setPendingAction] = useState<{ toolCall: FunctionCall, source: 'voice' | 'chat' } | null>(null);
 
     // Music Player State
     const [playlist, setPlaylist] = useState<MediaItem[]>([]);
@@ -277,6 +278,7 @@ const App: React.FC = () => {
     
     const toggleOutputMuteRef = useRef<((mute: boolean) => void) | null>(null);
     const isSavingRef = useRef(false);
+    const autoSaveTimerRef = useRef<number | null>(null);
 
     const addNotification = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
         const id = Date.now();
@@ -307,7 +309,7 @@ const App: React.FC = () => {
         }
     }, [addNotification, isVideoEnabled, isRecording]);
 
-    const handleNewConversation = useCallback(async (closeSidebar = true) => {
+    const handleNewConversation = useCallback(async (closeSidebar = true): Promise<Conversation> => {
         if (sessionRef.current) await endSession();
         const newConvo = await db.createConversation();
         const allConvos = await db.getConversations();
@@ -317,6 +319,7 @@ const App: React.FC = () => {
         setUploadedFiles([]);
         chatRef.current = null;
         if(closeSidebar) setIsSidebarOpen(false);
+        return newConvo;
     }, [endSession]);
 
     const initializeApp = useCallback(async () => {
@@ -324,12 +327,35 @@ const App: React.FC = () => {
             await db.signInAnonymouslyIfNeeded();
             const convos = await db.getConversations();
             setConversations(convos);
+            let convoToLoad: Conversation | null = null;
+    
             if (convos.length > 0) {
-                const latestConvo = convos[0];
-                setCurrentConversationId(latestConvo.id);
-                setTranscript(latestConvo.history);
+                convoToLoad = convos[0];
             } else {
-                await handleNewConversation(false);
+                convoToLoad = await handleNewConversation(false);
+            }
+            
+            if (convoToLoad) {
+                setCurrentConversationId(convoToLoad.id);
+                // Check for a local backup
+                const backupRaw = localStorage.getItem(`alex_conversation_backup_${convoToLoad.id}`);
+                if (backupRaw) {
+                    try {
+                        const backupHistory: ChatMessage[] = JSON.parse(backupRaw);
+                        // Simple logic: if backup has more messages, it's likely newer.
+                        if (backupHistory.length > convoToLoad.history.length) {
+                            setTranscript(backupHistory);
+                            addNotification("Restored unsaved changes from last session.", "info");
+                        } else {
+                            setTranscript(convoToLoad.history);
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse conversation backup:", e);
+                        setTranscript(convoToLoad.history);
+                    }
+                } else {
+                    setTranscript(convoToLoad.history);
+                }
             }
             
             // Load media library from both Supabase Storage (for uploads) and localStorage (for links)
@@ -376,7 +402,7 @@ const App: React.FC = () => {
                     addNotification("Failed to load Python environment.", "error");
                 });
         }
-    }, [isEnrolled, initializeApp]);
+    }, [isEnrolled, initializeApp, addNotification]);
     
     // Supabase Keep-Alive: Periodically refresh the session to prevent expiration.
     useEffect(() => {
@@ -393,15 +419,6 @@ const App: React.FC = () => {
 
         return () => clearInterval(keepAliveInterval);
     }, []);
-
-    useEffect(() => {
-        if (currentConversationId && transcript.length > 0 && !isSavingRef.current) {
-            isSavingRef.current = true;
-            db.saveConversationHistory(currentConversationId, transcript).finally(() => {
-                isSavingRef.current = false;
-            });
-        }
-    }, [transcript, currentConversationId]);
 
     const handleEnrollmentComplete = () => {
         localStorage.setItem('alex_biometrics_enrolled', 'true');
@@ -445,10 +462,42 @@ const App: React.FC = () => {
         }
     }, [conversations, currentConversationId]);
 
+    const saveConversation = useCallback((conversationId: string | null, history: ChatMessage[]) => {
+        if (!conversationId || history.length === 0 || isSavingRef.current) return;
+
+        if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current);
+        }
+
+        autoSaveTimerRef.current = window.setTimeout(() => {
+            isSavingRef.current = true;
+            console.log('Auto-saving conversation...');
+            
+            try {
+                localStorage.setItem(`alex_conversation_backup_${conversationId}`, JSON.stringify(history));
+            } catch (e) {
+                console.error("Failed to save backup to local storage:", e);
+            }
+
+            db.saveConversationHistory(conversationId, history)
+                .then(() => {
+                    console.log('Conversation saved to Supabase.');
+                    localStorage.removeItem(`alex_conversation_backup_${conversationId}`);
+                })
+                .catch(error => {
+                    console.error("Failed to auto-save to Supabase:", error);
+                    addNotification("Could not save conversation. Check connection.", "error");
+                })
+                .finally(() => {
+                    isSavingRef.current = false;
+                });
+        }, 1000); // Debounce for 1 second
+    }, [addNotification]);
+
     const updateTranscript = useCallback((speaker: 'user' | 'alex', text: string) => {
         if (!text) return;
+        let newHistory: ChatMessage[] = [];
         setTranscript(prev => {
-            let newHistory;
             const lastMessage = prev[prev.length - 1];
             if (lastMessage && lastMessage.speaker === speaker && !lastMessage.text.endsWith(' ')) {
                 newHistory = [...prev.slice(0, -1), { ...lastMessage, text: lastMessage.text + text }];
@@ -456,9 +505,28 @@ const App: React.FC = () => {
                 newHistory = [...prev, { id: Date.now(), speaker, text }];
             }
             checkAndGenerateTitle(newHistory);
+            
+            if (speaker === 'alex' && currentConversationId) {
+                saveConversation(currentConversationId, newHistory);
+            }
+            
             return newHistory;
         });
-    }, [checkAndGenerateTitle]);
+    }, [checkAndGenerateTitle, saveConversation, currentConversationId]);
+    
+    // Auto-save every 30 seconds
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setTranscript(currentTranscript => {
+                if (currentConversationId && currentTranscript.length > 0) {
+                    saveConversation(currentConversationId, currentTranscript);
+                }
+                return currentTranscript;
+            });
+        }, 30000);
+
+        return () => clearInterval(interval);
+    }, [currentConversationId, saveConversation]);
 
     const playAudio = useCallback(async (base64Audio: string) => {
         if (!base64Audio) return;
@@ -605,7 +673,7 @@ const App: React.FC = () => {
         setTrackProgress(prev => ({ ...prev, currentTime: time }));
     }, [currentTrack]);
 
-    const handleToolCall = useCallback(async (fc: FunctionCall, source: 'voice' | 'chat') => {
+    const executeToolCall = useCallback(async (fc: FunctionCall, source: 'voice' | 'chat') => {
         if (source === 'voice') setAgentStatus('executing');
         const taskId = addBackgroundTask(`Executing: ${fc.name}...`);
         
@@ -863,6 +931,13 @@ const App: React.FC = () => {
                     await new Promise(resolve => setTimeout(resolve, 4000));
                     result = `Complex task "${fc.args.description}" completed successfully. All systems are nominal.`;
                     break;
+                case 'rollbackDeployment':
+                case 'runDeployment':
+                    const env = fc.args.environment as string;
+                    updateBackgroundTask(taskId, `${fc.name === 'runDeployment' ? 'Deploying to' : 'Rolling back'} ${env}...`);
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    result = `Successfully completed ${fc.name} for ${env} environment.`;
+                    break;
                 default:
                     result = `Successfully executed ${fc.name}.`;
             }
@@ -878,9 +953,87 @@ const App: React.FC = () => {
         if (source === 'voice' && sessionRef.current) {
             sessionRef.current.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result } } });
              setAgentStatus('listening');
+        } else if (source === 'chat' && chatRef.current) {
+             const toolResponse = await sendChatMessage(chatRef.current, "", [{
+                functionResponse: { name: fc.name, response: { result } }
+            }]);
+            updateTranscript('alex', toolResponse.text);
         }
+
         return result;
-    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles, currentConversationId, transcript, playlist, currentTrack, isPlaying, playTrack, handlePlayPause, handleNextTrack, handlePrevTrack, handleSaveMediaLibrary, playAudio]);
+    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles, currentConversationId, transcript, playlist, currentTrack, isPlaying, playTrack, handlePlayPause, handleNextTrack, handlePrevTrack, handleSaveMediaLibrary, playAudio, updateTranscript]);
+
+    const handleToolCall = useCallback(async (fc: FunctionCall, source: 'voice' | 'chat') => {
+        const IMPACTFUL_TOOLS = [
+            'runDeployment', 
+            'rollbackDeployment', 
+            'triggerPipeline', 
+            'runBrowserAutomation', 
+            'writeFile', 
+            'cloneWebsite', 
+            'sendEmail', 
+            'executeComplexTask'
+        ];
+
+        if (IMPACTFUL_TOOLS.includes(fc.name)) {
+            setPendingAction({ toolCall: fc, source });
+            const actionDescription = fc.args.pipelineName || fc.args.task || fc.args.description || `${fc.name} on ${fc.args.environment || fc.args.url || ''}`;
+            const confirmationQuestion = `Confirm ko lang Boss, ito po ang gagawin natin: "${actionDescription}". Tama po ba? Tuloy ko na?`;
+            
+            updateTranscript('alex', confirmationQuestion);
+
+            if (source === 'voice') {
+                try {
+                    const audioBase64 = await synthesizeSpeech(confirmationQuestion);
+                    await playAudio(audioBase64);
+                } catch (e) {
+                    console.error("Could not synthesize confirmation speech:", e);
+                }
+            }
+            return;
+        }
+
+        await executeToolCall(fc, source);
+    }, [updateTranscript, playAudio, executeToolCall]);
+    
+    const processConfirmation = useCallback(async (userResponse: string) => {
+        if (!pendingAction) return;
+        
+        const positiveResponses = ['yes', 'sige', 'oo', 'go', 'confirm', 'tuloy mo'];
+        const isConfirmed = positiveResponses.some(w => userResponse.toLowerCase().includes(w));
+        
+        const actionToExecute = pendingAction;
+        setPendingAction(null);
+
+        if (isConfirmed) {
+            const confirmationMessage = "Sige Boss, executing now.";
+            updateTranscript('alex', confirmationMessage);
+            if (actionToExecute.source === 'voice') {
+                synthesizeSpeech(confirmationMessage).then(playAudio).catch(console.error);
+            }
+            await executeToolCall(actionToExecute.toolCall, actionToExecute.source);
+        } else {
+            const cancelMsg = "Okay Boss, cancelled.";
+            updateTranscript('alex', cancelMsg);
+            if (actionToExecute.source === 'voice') {
+                synthesizeSpeech(cancelMsg).then(playAudio).catch(console.error);
+            }
+            
+            // Send a "cancelled" response to the model so it knows the tool call is finished.
+            if (actionToExecute.source === 'voice' && sessionRef.current) {
+                 sessionRef.current.sendToolResponse({ functionResponses: {
+                     id: actionToExecute.toolCall.id,
+                     name: actionToExecute.toolCall.name,
+                     response: { result: "Action cancelled by user." }
+                 }});
+            } else if (actionToExecute.source === 'chat' && chatRef.current) {
+                const toolResponse = await sendChatMessage(chatRef.current, "", [{
+                    functionResponse: { name: actionToExecute.toolCall.name, response: { result: "Action cancelled by user." } }
+                }]);
+                updateTranscript('alex', toolResponse.text);
+             }
+        }
+    }, [pendingAction, executeToolCall, updateTranscript, playAudio]);
 
     const startSession = useCallback(async () => {
         try {
@@ -900,7 +1053,12 @@ const App: React.FC = () => {
                 onSpeaking: () => setAgentStatus('speaking'),
                 onIdle: () => setAgentStatus('listening'),
                 onToolCall: (fc) => handleToolCall(fc, 'voice'),
-                onTranscriptionUpdate: updateTranscript,
+                onTranscriptionUpdate: (speaker, text) => {
+                     updateTranscript(speaker, text);
+                    if (speaker === 'user' && pendingAction && pendingAction.source === 'voice') {
+                       processConfirmation(text);
+                    }
+                },
                 onError: (e) => {
                     console.error("Session error:", e);
                     addNotification('An error occurred. Session closed.', 'error');
@@ -918,7 +1076,7 @@ const App: React.FC = () => {
             addNotification('Failed to connect. Check permissions.', 'error');
             setAgentStatus('idle');
         }
-    }, [addNotification, handleToolCall, updateTranscript, endSession, isVideoEnabled, transcript, systemPrompt, conversations]);
+    }, [addNotification, handleToolCall, updateTranscript, endSession, isVideoEnabled, transcript, systemPrompt, conversations, pendingAction, processConfirmation]);
     
     const handleToggleRecording = useCallback(() => {
         if (isRecording) {
@@ -1004,6 +1162,13 @@ const App: React.FC = () => {
     };
 
     const handleSendTextMessage = async (message: string) => {
+        updateTranscript('user', message);
+
+        if (pendingAction && pendingAction.source === 'chat') {
+            await processConfirmation(message);
+            return;
+        }
+
         if (!chatRef.current) {
             setAgentStatus('recalling');
             const recentConvos = conversations.slice(0, 5);
@@ -1011,18 +1176,13 @@ const App: React.FC = () => {
             chatRef.current = await startChatSession(transcript, systemPrompt + memoryContext);
             setAgentStatus('idle');
         }
-        updateTranscript('user', message);
         
         try {
             setAgentStatus('executing');
             const response = await sendChatMessage(chatRef.current, message);
             if(response.functionCalls && response.functionCalls.length > 0){
                  for(const fc of response.functionCalls){
-                    const result = await handleToolCall(fc, 'chat');
-                    const toolResponse = await sendChatMessage(chatRef.current, "", [{
-                        functionResponse: { name: fc.name, response: { result } }
-                    }]);
-                    updateTranscript('alex', toolResponse.text);
+                    await handleToolCall(fc, 'chat');
                  }
             } else {
                 updateTranscript('alex', response.text);

@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect } from 'react';
 import type { AgentStatus } from '../types';
 
@@ -36,6 +37,7 @@ const MiniLuto: React.FC<{ status: AgentStatus }> = ({ status }) => {
 export const Luto: React.FC<LutoProps> = ({ status, analyserNode }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const bubblesRef = useRef<any[]>([]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -58,100 +60,111 @@ export const Luto: React.FC<LutoProps> = ({ status, analyserNode }) => {
         resizeCanvas();
 
         const dataArray = analyserNode ? new Uint8Array(analyserNode.frequencyBinCount) : new Uint8Array(0);
+        
+        const initBubbles = () => {
+            const numBubbles = 30;
+            bubblesRef.current = [];
+            for (let i = 0; i < numBubbles; i++) {
+                bubblesRef.current.push({
+                    angle: Math.random() * Math.PI * 2,
+                    speed: 0.005 + Math.random() * 0.01,
+                    radius: 3 + Math.random() * 10,
+                    distance: 0.1 + Math.random() * 0.8, 
+                    opacity: 0.1 + Math.random() * 0.3,
+                });
+            }
+        };
+
+        if (bubblesRef.current.length === 0) {
+            initBubbles();
+        }
+
 
         const render = (time: number) => {
             const width = canvas.width;
             const height = canvas.height;
             const centerX = width / 2;
             const centerY = height / 2;
-            const radius = Math.min(width, height) / 4;
+            const mainRadius = Math.min(width, height) / 3.5;
 
             ctx.clearRect(0, 0, width, height);
             
             let color = 'rgba(107, 114, 128, 1)'; // Idle color
-            let basePulse = 0;
-            let barMultiplier = 1;
+            let energy = 0.1;
 
             switch (status) {
                 case 'listening':
                     color = 'rgba(52, 211, 153, 1)'; // Green
-                    barMultiplier = 1.2;
+                    energy = 0.5;
                     break;
                 case 'speaking':
                     color = 'rgba(96, 165, 250, 1)'; // Blue
-                    barMultiplier = 1.5;
+                    energy = 1.0;
                     break;
                 case 'executing':
                     color = 'rgba(251, 191, 36, 1)'; // Amber
-                    basePulse = Math.sin(time / 150) * 8 + 10;
+                    energy = 0.6;
                     break;
                 case 'recalling':
                     color = 'rgba(192, 132, 252, 1)'; // Purple
-                    basePulse = Math.sin(time / 200) * 5 + 5;
+                    energy = 0.4;
                     break;
                 case 'connecting':
                 case 'verifying':
                     color = 'rgba(250, 204, 21, 1)'; // Yellow
-                    basePulse = Math.sin(time / 200) * 5 + 5;
-                    break;
-                case 'idle':
-                    basePulse = Math.sin(time / 500) * 2 + 2;
+                     energy = 0.3;
                     break;
             }
 
+            let audioLevel = 0;
             if (analyserNode && (status === 'listening' || status === 'speaking')) {
                 analyserNode.getByteFrequencyData(dataArray);
-            }
-
-            const numBars = 128;
-            ctx.lineWidth = 2.5;
-
-            // Outer ring visualizer
-            for (let i = 0; i < numBars; i++) {
-                const angle = (i / numBars) * Math.PI * 2 - Math.PI / 2;
-                
-                let barHeight = basePulse;
-                 if (analyserNode && (status === 'listening' || status === 'speaking')) {
-                    const index = Math.floor((i / numBars) * (dataArray.length * 0.4)); // Use lower frequencies
-                    const value = dataArray[index];
-                    barHeight = (value / 255) * (radius * barMultiplier);
+                let sum = 0;
+                for (let i = 0; i < dataArray.length; i++) {
+                    sum += dataArray[i];
                 }
-
-                const startRadius = radius * 1.2;
-                const endRadius = radius * 1.2 + barHeight;
-
-                const startX = centerX + Math.cos(angle) * startRadius;
-                const startY = centerY + Math.sin(angle) * startRadius;
-                const endX = centerX + Math.cos(angle) * endRadius;
-                const endY = centerY + Math.sin(angle) * endRadius;
-                
-                const gradient = ctx.createLinearGradient(startX, startY, endX, endY);
-                gradient.addColorStop(0, `${color.replace('1)', '0.1)')}`);
-                gradient.addColorStop(1, `${color.replace('1)', '1)')}`);
-
-                ctx.strokeStyle = gradient;
-                
-                ctx.beginPath();
-                ctx.moveTo(startX, startY);
-                ctx.lineTo(endX, endY);
-                ctx.stroke();
+                audioLevel = (sum / dataArray.length) / 255;
+                energy += audioLevel * 2.5;
+            } else {
+                 energy += Math.sin(time / 500) * 0.05;
             }
+
+            // Draw bubbles inside the circle
+            bubblesRef.current.forEach(bubble => {
+                bubble.angle += bubble.speed * energy * 0.5;
+                
+                const r = mainRadius * bubble.distance;
+                const x = centerX + Math.cos(bubble.angle) * r;
+                const y = centerY + Math.sin(bubble.angle) * r;
+
+                ctx.beginPath();
+                ctx.arc(x, y, bubble.radius * (1 + audioLevel * 0.5), 0, Math.PI * 2);
+                ctx.fillStyle = color.replace('1)', `${bubble.opacity * (0.5 + energy * 0.5)})`);
+                ctx.fill();
+            });
 
             // Central core glow
-            const coreGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-            coreGlow.addColorStop(0, `${color.replace('1)', '0.3)')}`);
+            const coreGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, mainRadius * 0.9);
+            coreGlow.addColorStop(0, `${color.replace('1)', '0.2)')}`);
             coreGlow.addColorStop(1, `${color.replace('1)', '0)')}`);
 
             ctx.fillStyle = coreGlow;
             ctx.beginPath();
-            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+            ctx.arc(centerX, centerY, mainRadius * 0.9, 0, 2 * Math.PI);
             ctx.fill();
 
-            // Inner circle
+            // Outer Ring
             ctx.beginPath();
-            ctx.arc(centerX, centerY, radius * 0.8, 0, 2 * Math.PI, false);
-            ctx.strokeStyle = color.replace('1)', '0.4)');
-            ctx.lineWidth = 1;
+            ctx.arc(centerX, centerY, mainRadius, 0, 2 * Math.PI, false);
+            ctx.strokeStyle = color.replace('1)', '0.5)');
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // Subtle inner glow for the ring
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, mainRadius - 3, 0, 2 * Math.PI, false);
+            ctx.strokeStyle = color.replace('1)', '0.2)');
+            ctx.lineWidth = 2;
             ctx.stroke();
             
 
@@ -169,11 +182,6 @@ export const Luto: React.FC<LutoProps> = ({ status, analyserNode }) => {
     return (
         <div ref={containerRef} className="w-full h-full relative flex items-center justify-center">
             <canvas ref={canvasRef}></canvas>
-            {status === 'idle' && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none group-hover:opacity-100 opacity-50 transition-opacity duration-300">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
-                </div>
-            )}
         </div>
     );
 };
