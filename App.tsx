@@ -2,7 +2,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, FunctionCall, Chat } from '@google/genai';
 import { Luto, MiniLuto } from './components/Orb';
-import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, BackgroundTask, IntegrationCredentials, MediaItem, ProjectFile } from './types';
+import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, BackgroundTask, IntegrationCredentials, MediaItem, ProjectFile, CliHistoryItem } from './types';
 import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData, analyzeCode, summarizeConversationsForMemory, generateConversationSummary, performWebSearch, searchYouTube, generateLyrics, analyzeAudioTone, blobToBase64 } from './services/geminiService';
 import * as db from './services/supabaseService';
 import { supabase } from './services/supabase';
@@ -11,6 +11,7 @@ import { Sidebar } from './components/Sidebar';
 import { Settings } from './components/Settings';
 import { MusicPlayer } from './components/MusicPlayer';
 import { MusicStudio } from './components/MusicStudio';
+import { DevConsole } from './components/DevConsole';
 
 // --- Python Execution Service (using Pyodide) ---
 declare global {
@@ -369,6 +370,7 @@ const App: React.FC = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isMusicStudioOpen, setIsMusicStudioOpen] = useState(false);
+    const [isDevConsoleOpen, setIsDevConsoleOpen] = useState(false);
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
     const [systemPrompt, setSystemPrompt] = useState<string>(DEFAULT_SYSTEM_PROMPT);
@@ -380,6 +382,12 @@ const App: React.FC = () => {
     const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
     const [isPyodideReady, setIsPyodideReady] = useState(false);
     const [pendingAction, setPendingAction] = useState<{ toolCall: FunctionCall, source: 'voice' | 'chat' } | null>(null);
+
+    // Dev Console State
+    const [browserUrl, setBrowserUrl] = useState('about:blank');
+    const [cliHistory, setCliHistory] = useState<CliHistoryItem[]>([
+        { type: 'output', text: 'Alex CLI v1.0. Welcome, Master E.' }
+    ]);
 
     // Music Player State
     const [playlist, setPlaylist] = useState<MediaItem[]>([]);
@@ -798,6 +806,46 @@ const App: React.FC = () => {
         setTrackProgress(prev => ({ ...prev, currentTime: time }));
     }, [currentTrack]);
 
+    const handleRunCliCommand = useCallback(async (command: string): Promise<string> => {
+        setCliHistory(prev => [...prev, { type: 'command', text: command }]);
+    
+        await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 800));
+    
+        let output = '';
+        const [cmd, ...args] = command.trim().split(' ');
+    
+        switch (cmd.toLowerCase()) {
+            case 'help':
+                output = 'Available commands: ls, git status, ping <host>, echo <...text>, clear';
+                break;
+            case 'ls':
+                output = 'README.md  package.json  src/  node_modules/  dist/';
+                break;
+            case 'git':
+                if (args[0] === 'status') {
+                    output = `On branch main\nYour branch is up to date with 'origin/main'.\n\nnothing to commit, working tree clean`;
+                } else {
+                    output = `git: '${args[0] || ''}' is not a git command. See 'git --help'.`;
+                }
+                break;
+            case 'ping':
+                const host = args[0] || 'google.com';
+                output = `Pinging ${host}...\nReply from 8.8.8.8: bytes=32 time=10ms TTL=117\nReply from 8.8.8.8: bytes=32 time=11ms TTL=117`;
+                break;
+            case 'echo':
+                output = args.join(' ');
+                break;
+            case 'clear':
+                setCliHistory([{ type: 'output', text: 'Console cleared.' }]);
+                return 'Console cleared.';
+            default:
+                output = `command not found: ${command}`;
+        }
+    
+        setCliHistory(prev => [...prev, { type: 'output', text: output }]);
+        return output;
+    }, []);
+
     const executeToolCall = useCallback(async (fc: FunctionCall, source: 'voice' | 'chat') => {
         if (source === 'voice') setAgentStatus('executing');
         const taskId = addBackgroundTask(`Executing: ${fc.name}...`);
@@ -1018,14 +1066,33 @@ const App: React.FC = () => {
                 case 'cloneWebsite': {
                     const url = fc.args.url as string;
                     updateBackgroundTask(taskId, `Cloning ${url}...`);
+                    setIsDevConsoleOpen(true);
+                    setBrowserUrl(url); // Show the website in the dev console
                     await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 2000));
-                    result = `Successfully cloned ${url} to local directory.`;
+                    result = `Successfully cloned ${url} to local directory. You can see the site in the Dev Console.`;
+                    break;
+                }
+                case 'browseUrl': {
+                    const url = fc.args.url as string;
+                    updateBackgroundTask(taskId, `Opening browser to: ${url}...`);
+                    setIsDevConsoleOpen(true);
+                    setBrowserUrl(url);
+                    result = `Browser is now navigating to ${url}.`;
+                    break;
+                }
+                case 'runCliCommand': {
+                    const command = fc.args.command as string;
+                    updateBackgroundTask(taskId, `Running CLI command: "${command}"...`);
+                    setIsDevConsoleOpen(true);
+                    result = await handleRunCliCommand(command);
                     break;
                 }
                 case 'runBrowserAutomation': {
                     const url = fc.args.url as string;
                     const task = fc.args.task as string;
                     updateBackgroundTask(taskId, `Running browser automation on ${url}...`);
+                    setIsDevConsoleOpen(true);
+                    setBrowserUrl(url); // Show the page being automated
                     await new Promise(resolve => setTimeout(resolve, 4000 + Math.random() * 2000));
                     result = `Sige Boss, I've completed the browser automation task on ${url}: "${task}". The results have been saved.`;
                     break;
@@ -1086,7 +1153,7 @@ const App: React.FC = () => {
         }
 
         return result;
-    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles, currentConversationId, transcript, playlist, currentTrack, isPlaying, playTrack, handlePlayPause, handleNextTrack, handlePrevTrack, handleSaveMediaLibrary, playAudio, updateTranscript]);
+    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles, currentConversationId, transcript, playlist, currentTrack, isPlaying, playTrack, handlePlayPause, handleNextTrack, handlePrevTrack, handleSaveMediaLibrary, playAudio, updateTranscript, handleRunCliCommand]);
 
     const handleToolCall = useCallback(async (fc: FunctionCall, source: 'voice' | 'chat') => {
         const IMPACTFUL_TOOLS = [
@@ -1655,6 +1722,15 @@ const App: React.FC = () => {
                     onSaveProjectFiles={handleSaveProjectFiles}
                 />
             )}
+             {isDevConsoleOpen && (
+                <DevConsole
+                    isOpen={isDevConsoleOpen}
+                    onClose={() => setIsDevConsoleOpen(false)}
+                    browserUrl={browserUrl}
+                    cliHistory={cliHistory}
+                    onRunCommand={handleRunCliCommand}
+                />
+            )}
             {isMusicStudioOpen && (
                 <MusicStudio
                     isOpen={isMusicStudioOpen}
@@ -1702,9 +1778,14 @@ const App: React.FC = () => {
                             </div>
                         ))}
                     </div>
-                    <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Open Settings">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                    </button>
+                    <div className="flex items-center gap-2">
+                         <button onClick={() => setIsDevConsoleOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Open Developer Console">
+                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                        </button>
+                        <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Open Settings">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        </button>
+                    </div>
                 </header>
 
                 <main className="flex-1 flex items-center justify-center p-4">

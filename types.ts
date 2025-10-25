@@ -1,3 +1,4 @@
+
 export type AgentStatus = 'idle' | 'verifying' | 'connecting' | 'listening' | 'speaking' | 'executing' | 'recalling';
 
 export interface Notification {
@@ -58,4 +59,9 @@ export interface MediaItem {
     source?: 'url' | 'youtube' | 'upload';
     youtubeId?: string;
     thumbnailUrl?: string;
+}
+
+export interface CliHistoryItem {
+    type: 'command' | 'output';
+    text: string;
 }

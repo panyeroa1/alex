@@ -14,6 +14,27 @@ export type Database = {
         // By setting 'history' to 'any' here, Supabase can correctly infer the types for database operations,
         // so we no longer need to define Insert and Update types manually.
         Row: Omit<Conversation, 'history'> & { history: any };
+        // FIX: Manually defining Insert and Update types to resolve 'never' type inference issue
+        // that was not solved by only overriding the Row type. This ensures that insert() and update()
+        // methods have the correct parameter types.
+        Insert: {
+          id?: string;
+          created_at?: string;
+          title: string;
+          history?: any;
+          summary?: string | null;
+          user_id: string;
+          recording_url?: string | null;
+        };
+        Update: {
+          id?: string;
+          created_at?: string;
+          title?: string;
+          history?: any;
+          summary?: string | null;
+          user_id?: string;
+          recording_url?: string | null;
+        };
       };
     };
     Views: {

@@ -1,3 +1,4 @@
+
 import { FunctionDeclaration, Type } from '@google/genai';
 
 export const DEFAULT_SYSTEM_PROMPT = `ROLE & BRAND  
@@ -423,6 +424,34 @@ export const DEV_TOOLS: FunctionDeclaration[] = [
                 },
             },
             required: ['url'],
+        },
+    },
+    {
+        name: 'browseUrl',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Opens the Developer Console and navigates its browser to a specified URL.',
+            properties: {
+                url: {
+                    type: Type.STRING,
+                    description: 'The full URL to navigate to (e.g., "https://www.google.com").',
+                },
+            },
+            required: ['url'],
+        },
+    },
+    {
+        name: 'runCliCommand',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Opens the Developer Console and runs a shell command in its terminal.',
+            properties: {
+                command: {
+                    type: Type.STRING,
+                    description: 'The shell command to execute (e.g., "ls -la", "git status").',
+                },
+            },
+            required: ['command'],
         },
     },
     {
