@@ -2,6 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
+// FIX: Import ChatMessage to be used in the Database type definition.
 import { Conversation, ChatMessage } from '../types';
 
 // Define the type for our database schema for type safety.
@@ -15,7 +16,8 @@ export type Database = {
         // By specifying `any` for the history field in Insert/Update, we bypass this issue while keeping `ChatMessage[]` for the Row type for type-safe reads.
         Insert: {
           title: string;
-          history: any;
+          // FIX: Use the specific ChatMessage[] type instead of 'any' to fix the type inference issue.
+          history: ChatMessage[];
           user_id: string;
           recording_url?: string | null;
           summary?: string | null;
@@ -23,7 +25,8 @@ export type Database = {
         };
         Update: {
           title?: string;
-          history?: any;
+          // FIX: Use the specific ChatMessage[] type instead of 'any' to fix the type inference issue.
+          history?: ChatMessage[];
           recording_url?: string | null;
           summary?: string | null;
           last_accessed_at?: string;

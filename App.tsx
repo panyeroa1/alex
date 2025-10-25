@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, FunctionCall, Chat } from '@google/genai';
 import { Luto, MiniLuto } from './components/Orb';
@@ -73,6 +74,7 @@ const executePython = async (code: string): Promise<PythonExecutionResult> => {
 const BiometricsEnrollment: React.FC<{ onEnrollmentComplete: () => void; }> = ({ onEnrollmentComplete }) => {
     const [status, setStatus] = useState<'idle' | 'prompting' | 'recording' | 'processing' | 'done'>('idle');
     const [countdown, setCountdown] = useState(3);
+    // FIX: Initialize useRef with null instead of the undefined variable 'timer'.
     const timerRef = useRef<number | null>(null);
 
     const startRecording = () => {
@@ -255,6 +257,7 @@ const App: React.FC = () => {
     const [playlist, setPlaylist] = useState<MediaItem[]>([]);
     const [currentTrack, setCurrentTrack] = useState<MediaItem | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [trackProgress, setTrackProgress] = useState({ currentTime: 0, duration: 0 });
     
     const sessionRef = useRef<LiveSession | null>(null);
     const chatRef = useRef<Chat | null>(null);
@@ -268,6 +271,7 @@ const App: React.FC = () => {
     const audioPlayerRef = useRef<HTMLAudioElement>(null);
     const youtubePlayerRef = useRef<any>(null);
     const [isYouTubeApiReady, setIsYouTubeApiReady] = useState(false);
+    const progressIntervalRef = useRef<number | null>(null);
     
     const toggleOutputMuteRef = useRef<((mute: boolean) => void) | null>(null);
     const isSavingRef = useRef(false);
@@ -474,6 +478,12 @@ const App: React.FC = () => {
     // FIX: Reordered music player functions to ensure `playTrack` is declared before functions that use it.
     const playTrack = useCallback((track: MediaItem) => {
         setCurrentTrack(track);
+        setTrackProgress({ currentTime: 0, duration: 0 });
+        if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current);
+            progressIntervalRef.current = null;
+        }
+
         if (track.source === 'youtube' && track.youtubeId) {
             audioPlayerRef.current?.pause();
             if (youtubePlayerRef.current?.loadVideoById) {
@@ -523,6 +533,17 @@ const App: React.FC = () => {
             }
         }
     }, [isPlaying, currentTrack, playlist, playTrack]);
+
+    const handleSeek = useCallback((time: number) => {
+        if (!currentTrack || !isFinite(time)) return;
+
+        if (currentTrack.source === 'youtube' && youtubePlayerRef.current?.seekTo) {
+            youtubePlayerRef.current.seekTo(time, true);
+        } else if (audioPlayerRef.current) {
+            audioPlayerRef.current.currentTime = time;
+        }
+        setTrackProgress(prev => ({ ...prev, currentTime: time }));
+    }, [currentTrack]);
 
     const handleToolCall = useCallback(async (fc: FunctionCall, source: 'voice' | 'chat') => {
         if (source === 'voice') setAgentStatus('executing');
@@ -948,7 +969,7 @@ const App: React.FC = () => {
         };
         setIntegrations(newIntegrations);
         localStorage.setItem('alex_integrations', JSON.stringify(newIntegrations));
-        addNotification('Story Auth settings updated.', 'success');
+        addNotification(`Story Auth settings updated.`);
     };
 
     const runCliAgentAnalysis = useCallback(async (newFiles: ProjectFile[]) => {
@@ -1014,10 +1035,22 @@ const App: React.FC = () => {
     
     // --- YouTube Player Setup ---
     const onPlayerStateChange = useCallback((event: any) => {
+        if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current);
+            progressIntervalRef.current = null;
+        }
+
         if (window.YT) {
             const { PlayerState } = window.YT;
             if (event.data === PlayerState.PLAYING) {
                 setIsPlaying(true);
+                progressIntervalRef.current = window.setInterval(() => {
+                    if (youtubePlayerRef.current?.getCurrentTime && youtubePlayerRef.current?.getDuration) {
+                        const currentTime = youtubePlayerRef.current.getCurrentTime();
+                        const duration = youtubePlayerRef.current.getDuration();
+                        setTrackProgress({ currentTime, duration });
+                    }
+                }, 500);
             } else if (event.data === PlayerState.PAUSED) {
                 setIsPlaying(false);
             } else if (event.data === PlayerState.ENDED) {
@@ -1044,6 +1077,9 @@ const App: React.FC = () => {
         return () => {
             if (window.onYouTubeIframeAPIReady) {
                 delete window.onYouTubeIframeAPIReady;
+            }
+             if (progressIntervalRef.current) {
+                clearInterval(progressIntervalRef.current);
             }
         };
     }, []);
@@ -1079,15 +1115,29 @@ const App: React.FC = () => {
         const onPlay = () => setIsPlaying(true);
         const onPause = () => setIsPlaying(false);
         const onEnded = () => handleNextTrack();
+        const onTimeUpdate = () => {
+            if (audioEl.duration) {
+                setTrackProgress({ currentTime: audioEl.currentTime, duration: audioEl.duration });
+            }
+        };
+        const onLoadedMetadata = () => {
+             if (audioEl.duration) {
+                setTrackProgress({ currentTime: audioEl.currentTime, duration: audioEl.duration });
+            }
+        }
 
         audioEl.addEventListener('play', onPlay);
         audioEl.addEventListener('pause', onPause);
         audioEl.addEventListener('ended', onEnded);
+        audioEl.addEventListener('timeupdate', onTimeUpdate);
+        audioEl.addEventListener('loadedmetadata', onLoadedMetadata);
 
         return () => {
             audioEl.removeEventListener('play', onPlay);
             audioEl.removeEventListener('pause', onPause);
             audioEl.removeEventListener('ended', onEnded);
+            audioEl.removeEventListener('timeupdate', onTimeUpdate);
+            audioEl.removeEventListener('loadedmetadata', onLoadedMetadata);
         };
     }, [handleNextTrack]);
 
@@ -1256,16 +1306,16 @@ const App: React.FC = () => {
                              {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>}
                         </button>
                          <button onClick={handleToggleScreenShare} className={`p-3 rounded-full transition-colors ${isScreenSharing ? 'bg-blue-500' : 'hover:bg-white/10'}`} aria-label={isScreenSharing ? "Stop Sharing" : "Share Screen"}>
-                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
                         </button>
                         <button onClick={handleToggleRecording} className={`p-3 rounded-full transition-colors ${isRecording ? 'bg-red-500 animate-pulse-record' : 'hover:bg-white/10'}`} aria-label={isRecording ? "Stop Recording" : "Start Recording Idea"}>
-                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
+                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
                         </button>
                         <button onClick={handleToggleCc} className={`p-3 rounded-full transition-colors ${showCc ? 'bg-blue-500' : 'hover:bg-white/10'}`} aria-label={showCc ? "Hide Captions" : "Show Captions"}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-2"></path><path d="M6 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2"></path><path d="M12 12h.01"></path><path d="M17 12h.01"></path><path d="M7 12h.01"></path></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-2"></path><path d="M6 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2"></path><path d="M12 12h.01"></path><path d="M17 12h.01"></path><path d="M7 12h.01"></path></svg>
                         </button>
                          <button onClick={handleSwitchToChat} className="p-3 rounded-full hover:bg-white/10 transition-colors" aria-label="Switch to Chat Mode">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                         </button>
                     </div>
                 </footer>
@@ -1274,9 +1324,11 @@ const App: React.FC = () => {
             <MusicPlayer 
                 currentTrack={currentTrack}
                 isPlaying={isPlaying}
+                progress={trackProgress}
                 onPlayPause={handlePlayPause}
                 onNext={handleNextTrack}
                 onPrev={handlePrevTrack}
+                onSeek={handleSeek}
             />
         </div>
     );
