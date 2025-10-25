@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import type { AgentStatus } from '../types';
 
 interface LutoProps {
@@ -33,99 +33,150 @@ const MiniLuto: React.FC<{ status: AgentStatus }> = ({ status }) => {
 };
 
 
-export const Luto: React.FC<LutoProps> = ({ status }) => {
-    const isSpeaking = status === 'speaking';
-    const isListening = status === 'listening';
-    const isExecuting = status === 'executing';
-    const isConnecting = status === 'connecting';
-    const isVerifying = status === 'verifying';
-    const isRecalling = status === 'recalling';
+export const Luto: React.FC<LutoProps> = ({ status, analyserNode }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
-    const getGlowClass = () => {
-        if (isConnecting || isVerifying) return 'alex-glow-yellow';
-        if (isRecalling) return 'alex-glow-purple';
-        return '';
-    };
-    
-    return (
-        <div className="w-full h-full relative flex items-center justify-center">
-            {/* Alex SVG Character */}
-            <svg viewBox="0 0 200 200" className="w-full h-full drop-shadow-lg animate-alex-hover">
-                <defs>
-                    <radialGradient id="alex-skin-grad" cx="50%" cy="40%" r="60%">
-                        <stop offset="0%" stopColor="#fce4d6" />
-                        <stop offset="100%" stopColor="#f8c6b1" />
-                    </radialGradient>
-                    <linearGradient id="alex-sweater-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" stopColor="#5B9BD5" />
-                        <stop offset="100%" stopColor="#3A6B9B" />
-                    </linearGradient>
-                     <filter id="alex-inner-shadow" x="-50%" y="-50%" width="200%" height="200%">
-                        <feComponentTransfer in="SourceAlpha">
-                           <feFuncA type="table" tableValues="1 0" />
-                        </feComponentTransfer>
-                        <feGaussianBlur stdDeviation="2"/>
-                        <feOffset dx="0" dy="3" result="offsetblur"/>
-                        <feFlood floodColor="rgba(0,0,0,0.25)" result="color"/>
-                        <feComposite in2="offsetblur" operator="in"/>
-                        <feComposite in2="SourceAlpha" operator="in" />
-                        <feMerge>
-                           <feMergeNode in="SourceGraphic" />
-                           <feMergeNode />
-                        </feMerge>
-                    </filter>
-                </defs>
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        const container = containerRef.current;
+        if (!canvas || !container) return;
 
-                <g className={getGlowClass()}>
-                    {/* Main Body */}
-                    <circle cx="100" cy="100" r="80" fill="url(#alex-skin-grad)" />
-                    <path d="M 20 130 C 40 180, 160 180, 180 130 L 180 180 L 20 180 Z" fill="url(#alex-sweater-grad)" />
-                    <path d="M 55 25 C 20 40, 30 80, 80 60 C 100 50, 150 50, 150 70 C 180 80, 180 40, 145 25 Z" fill="#2E231F" />
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
 
-                    {/* Face features */}
-                    <g>
-                        {/* Eyebrows */}
-                        <path d="M 60 70 Q 75 60, 90 70" stroke="#2E231F" strokeWidth="5" fill="none" strokeLinecap="round" />
-                        <path d="M 110 70 Q 125 60, 140 70" stroke="#2E231F" strokeWidth="5" fill="none" strokeLinecap="round" />
-                        
-                        {/* Eyes */}
-                        <g className={`${isListening ? 'animate-alex-pupil-listen' : ''} animate-alex-blink`}>
-                            <circle cx="75" cy="85" r="10" fill="white" />
-                            <circle cx="75" cy="85" r="5" fill="#2E231F" className="pupil" />
-                            <circle cx="125" cy="85" r="10" fill="white" />
-                            <circle cx="125" cy="85" r="5" fill="#2E231F" className="pupil" />
-                        </g>
+        let animationFrameId: number;
 
-                        {/* Nose */}
-                        <path d="M 100 90 C 95 105, 105 105, 100 90" fill="#E8BBAA" opacity="0.7"/>
+        const resizeCanvas = () => {
+            const size = Math.min(container.clientWidth, container.clientHeight);
+            canvas.width = size;
+            canvas.height = size;
+        };
+        
+        const resizeObserver = new ResizeObserver(resizeCanvas);
+        resizeObserver.observe(container);
+        resizeCanvas();
 
-                        {/* Mouth */}
-                        <path d="M 80 120 Q 100 130, 120 120" stroke="#8B5742" strokeWidth="4" fill="none" strokeLinecap="round" className={isSpeaking ? 'animate-alex-mouth-speak' : ''} />
-                    </g>
-                    
-                     {/* Name Tag */}
-                     <g filter="url(#alex-inner-shadow)">
-                        <path d="M 80 140 C 60 150, 60 180, 80 180 L 120 180 C 140 180, 140 150, 120 140 Z" fill="#795548" />
-                        <rect x="70" y="155" width="60" height="25" rx="5" fill="#F5F5F5" stroke="#AAA" strokeWidth="0.5" />
-                        <text x="100" y="173" fontFamily="Roboto, sans-serif" fontSize="14" fontWeight="bold" fill="#222" textAnchor="middle">Alex</text>
-                    </g>
-                </g>
+        const dataArray = analyserNode ? new Uint8Array(analyserNode.frequencyBinCount) : new Uint8Array(0);
 
-                {/* Shades for executing */}
-                <g className={isExecuting ? 'animate-alex-shades-drop' : 'opacity-0'} style={{ transformOrigin: 'center 75px', pointerEvents: isExecuting ? 'auto' : 'none' }}>
-                     <path d="M 55 75 L 145 75 A 10 10 0 0 1 145 85 L 155 100 L 45 100 L 55 85 A 10 10 0 0 1 55 75 Z" fill="url(#luto-visor-grad)" stroke="#111" strokeWidth="2" />
-                </g>
-            </svg>
+        const render = (time: number) => {
+            const width = canvas.width;
+            const height = canvas.height;
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const radius = Math.min(width, height) / 4;
+
+            ctx.clearRect(0, 0, width, height);
             
+            let color = 'rgba(107, 114, 128, 1)'; // Idle color
+            let basePulse = 0;
+            let barMultiplier = 1;
+
+            switch (status) {
+                case 'listening':
+                    color = 'rgba(52, 211, 153, 1)'; // Green
+                    barMultiplier = 1.2;
+                    break;
+                case 'speaking':
+                    color = 'rgba(96, 165, 250, 1)'; // Blue
+                    barMultiplier = 1.5;
+                    break;
+                case 'executing':
+                    color = 'rgba(251, 191, 36, 1)'; // Amber
+                    basePulse = Math.sin(time / 150) * 8 + 10;
+                    break;
+                case 'recalling':
+                    color = 'rgba(192, 132, 252, 1)'; // Purple
+                    basePulse = Math.sin(time / 200) * 5 + 5;
+                    break;
+                case 'connecting':
+                case 'verifying':
+                    color = 'rgba(250, 204, 21, 1)'; // Yellow
+                    basePulse = Math.sin(time / 200) * 5 + 5;
+                    break;
+                case 'idle':
+                    basePulse = Math.sin(time / 500) * 2 + 2;
+                    break;
+            }
+
+            if (analyserNode && (status === 'listening' || status === 'speaking')) {
+                analyserNode.getByteFrequencyData(dataArray);
+            }
+
+            const numBars = 128;
+            ctx.lineWidth = 2.5;
+
+            // Outer ring visualizer
+            for (let i = 0; i < numBars; i++) {
+                const angle = (i / numBars) * Math.PI * 2 - Math.PI / 2;
+                
+                let barHeight = basePulse;
+                 if (analyserNode && (status === 'listening' || status === 'speaking')) {
+                    const index = Math.floor((i / numBars) * (dataArray.length * 0.4)); // Use lower frequencies
+                    const value = dataArray[index];
+                    barHeight = (value / 255) * (radius * barMultiplier);
+                }
+
+                const startRadius = radius * 1.2;
+                const endRadius = radius * 1.2 + barHeight;
+
+                const startX = centerX + Math.cos(angle) * startRadius;
+                const startY = centerY + Math.sin(angle) * startRadius;
+                const endX = centerX + Math.cos(angle) * endRadius;
+                const endY = centerY + Math.sin(angle) * endRadius;
+                
+                const gradient = ctx.createLinearGradient(startX, startY, endX, endY);
+                gradient.addColorStop(0, `${color.replace('1)', '0.1)')}`);
+                gradient.addColorStop(1, `${color.replace('1)', '1)')}`);
+
+                ctx.strokeStyle = gradient;
+                
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+            }
+
+            // Central core glow
+            const coreGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+            coreGlow.addColorStop(0, `${color.replace('1)', '0.3)')}`);
+            coreGlow.addColorStop(1, `${color.replace('1)', '0)')}`);
+
+            ctx.fillStyle = coreGlow;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Inner circle
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius * 0.8, 0, 2 * Math.PI, false);
+            ctx.strokeStyle = color.replace('1)', '0.4)');
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            
+
+            animationFrameId = requestAnimationFrame(render);
+        };
+
+        render(0);
+
+        return () => {
+            cancelAnimationFrame(animationFrameId);
+            resizeObserver.disconnect();
+        };
+    }, [status, analyserNode]);
+
+    return (
+        <div ref={containerRef} className="w-full h-full relative flex items-center justify-center">
+            <canvas ref={canvasRef}></canvas>
             {status === 'idle' && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-16 h-16 bg-blue-500 rounded-full opacity-0 group-hover:opacity-50 transition-opacity duration-300 flex items-center justify-center">
-                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
-                    </div>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none group-hover:opacity-100 opacity-50 transition-opacity duration-300">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
                 </div>
             )}
         </div>
     );
 };
+
 
 export { MiniLuto };
