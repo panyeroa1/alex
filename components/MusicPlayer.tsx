@@ -47,9 +47,13 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({ currentTrack, isPlayin
             <div className="max-w-4xl mx-auto p-4">
                 <div className="bg-black/50 backdrop-blur-lg border border-white/10 rounded-xl p-3 flex flex-col gap-2 shadow-2xl">
                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-gray-700 rounded-md flex items-center justify-center flex-shrink-0">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/50"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-                        </div>
+                        {currentTrack.thumbnailUrl ? (
+                            <img src={currentTrack.thumbnailUrl} alt={currentTrack.name} className="w-12 h-12 rounded-md object-cover flex-shrink-0" />
+                        ) : (
+                            <div className="w-12 h-12 bg-gray-700 rounded-md flex items-center justify-center flex-shrink-0">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/50"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                            </div>
+                        )}
                         <div className="flex-1 truncate">
                             <p className="text-white font-semibold truncate">{currentTrack.name}</p>
                             <p className="text-white/60 text-sm">{currentTrack.source === 'youtube' ? 'From YouTube' : 'From Library'}</p>

@@ -500,31 +500,32 @@ export async function searchYouTube(query: string): Promise<Partial<MediaItem> |
     try {
         const response = await ai.models.generateContent({
            model: "gemini-2.5-flash",
-           contents: `Find a song on YouTube for the query: "${query}". Respond ONLY with a JSON object containing "title" and "youtubeId". Example: {"title": "Artist - Song Title", "youtubeId": "videoId"}.`,
+           contents: `Find a song on YouTube for the query: "${query}". Respond ONLY with a JSON object containing "title", "youtubeId", and "thumbnailUrl". Use the highest quality thumbnail available. Example: {"title": "Artist - Song Title", "youtubeId": "videoId", "thumbnailUrl": "https://i.ytimg.com/vi/videoId/hqdefault.jpg"}.`,
            config: {
              responseMimeType: "application/json",
              responseSchema: {
                 type: Type.OBJECT,
                 properties: {
                     title: { type: Type.STRING },
-                    youtubeId: { type: Type.STRING }
+                    youtubeId: { type: Type.STRING },
+                    thumbnailUrl: { type: Type.STRING }
                 },
-                required: ['title', 'youtubeId']
+                required: ['title', 'youtubeId', 'thumbnailUrl']
              },
-            // FIX: Removed `tools` config because it is incompatible with `responseMimeType` and `responseSchema` as per Gemini API guidelines.
            },
         });
 
         const jsonString = response.text;
         const result = JSON.parse(jsonString);
 
-        if (result.title && result.youtubeId) {
+        if (result.title && result.youtubeId && result.thumbnailUrl) {
              // In a real app, you'd use a service like youtube-dl to get a direct stream URL.
              // For this simulation, we'll use a placeholder.
             const placeholderUrl = `https://www.youtube.com/watch?v=${result.youtubeId}`; // Not a direct audio link, but serves for tracking.
             return {
                 name: result.title,
                 youtubeId: result.youtubeId,
+                thumbnailUrl: result.thumbnailUrl,
                 url: placeholderUrl, 
                 source: 'youtube',
                 type: 'audio',

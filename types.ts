@@ -57,4 +57,5 @@ export interface MediaItem {
     // FIX: Add 'upload' to the source property to allow for media uploaded via Supabase storage.
     source?: 'url' | 'youtube' | 'upload';
     youtubeId?: string;
+    thumbnailUrl?: string;
 }
