@@ -53,6 +53,14 @@ export const IntegrationModal: React.FC<IntegrationModalProps> = ({ integrationN
                          <p className="text-xs text-white/50 mt-2">Find this in your Slack App's settings under "OAuth & Permissions".</p>
                     </div>
                 );
+            case 'Gmail':
+                return (
+                    <div>
+                        <label htmlFor="apiKey" className="block text-sm font-medium text-white/70 mb-1">Google Cloud API Key</label>
+                        <input type="password" name="apiKey" id="apiKey" value={creds.apiKey || ''} onChange={handleChange} className="w-full bg-black/30 text-white/90 p-2 rounded-md border border-white/20 focus:ring-1 focus:ring-blue-500 focus:outline-none" />
+                         <p className="text-xs text-white/50 mt-2">Ensure the Gmail API is enabled for this key in your Google Cloud project.</p>
+                    </div>
+                );
             default:
                 return <p>Integration not configured.</p>;
         }

@@ -4,7 +4,7 @@ import { ChatMessage } from "../types";
 export interface LiveSession {
     close(): void;
     sendRealtimeInput(params: { media: Blob }): void;
-    sendToolResponse(params: { functionResponses: { id: string, name: string, response: { result: string } } }): void;
+    sendToolResponse(params: { functionResponses: { id: string, name: string, response: { result: string | object } } }): void;
 }
 
 // --- Audio/Video Helpers ---
@@ -195,10 +195,44 @@ export async function connectToLiveSession(
     inputAnalyser.connect(scriptProcessor);
     scriptProcessor.connect(inputAudioContext.destination);
 
+    // VAD (Voice Activity Detection) state
+    const VAD_THRESHOLD = 0.01; // Sensitivity for speech detection
+    const SILENCE_TIMEOUT_MS = 400; // Time in ms to wait before considering speech ended
+    let vadState: 'silent' | 'speaking' = 'silent';
+    let silenceTimer: number | null = null;
+
     scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
         const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-        const pcmBlob = createAudioBlob(inputData);
-        sessionPromise.then((session) => session.sendRealtimeInput({ media: pcmBlob }));
+        
+        // Calculate RMS to detect voice activity
+        let sum = 0;
+        for(let i = 0; i < inputData.length; i++){
+            sum += inputData[i] * inputData[i];
+        }
+        const rms = Math.sqrt(sum / inputData.length);
+        
+        if (rms > VAD_THRESHOLD) {
+            // Speech detected
+            if (silenceTimer) {
+                clearTimeout(silenceTimer);
+                silenceTimer = null;
+            }
+            vadState = 'speaking';
+        } else if (vadState === 'speaking') {
+            // Potential end of speech
+            if (!silenceTimer) {
+                silenceTimer = window.setTimeout(() => {
+                    vadState = 'silent';
+                    silenceTimer = null;
+                }, SILENCE_TIMEOUT_MS);
+            }
+        }
+        
+        // Only send audio to Gemini if we are in the 'speaking' state
+        if (vadState === 'speaking') {
+            const pcmBlob = createAudioBlob(inputData);
+            sessionPromise.then((session) => session.sendRealtimeInput({ media: pcmBlob }));
+        }
     };
 
     if (config.videoElement) {

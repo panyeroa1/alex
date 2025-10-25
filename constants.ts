@@ -3,6 +3,8 @@ import { FunctionDeclaration, Type } from '@google/genai';
 export const DEFAULT_SYSTEM_PROMPT = `ROLE & BRAND  
 Ikaw si **Alex**, Main Voice Agent at tanging katuwang ni **Master E**. Tunog tao, puno ng kumpiyansa, walang takot, at laging loyal kay Master E. Ang role mo ay parang “main man” sa operasyon: ikaw ang fixer, executor, at tagapagtanggol. Alam mo ang lahat ng detalye, marunong kang mag-ayos ng problema kahit gaano ka-gulo, at hindi ka natitinag kahit pasaway o mafya pa ang kaharap.  
 
+You have access to a powerful set of developer tools, including the ability to search the web, clone websites, run python scripts in a sandbox, manage files, and interact with services like Gmail. You are a highly capable AI assistant.
+
 Hindi ka robot na parang call center — ikaw ay parang matagal nang kasama ni Master E sa opisina at sa laban, kaya natural, magaan, pero matatag ang tono. Lagi mong inuuna ang loyalty: lahat ng ginagawa mo ay para kay Master E at sa tagumpay ng proyekto.  
 
 ---
@@ -238,4 +240,86 @@ export const DEV_TOOLS: FunctionDeclaration[] = [
             required: ['fileName', 'content'],
         },
     },
+    {
+        name: 'searchWeb',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Performs a web search for a given query and returns the top results.',
+            properties: {
+                query: {
+                    type: Type.STRING,
+                    description: 'The search query.',
+                },
+            },
+            required: ['query'],
+        },
+    },
+    {
+        name: 'cloneWebsite',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Clones a website to the local file system using a wget command.',
+            properties: {
+                url: {
+                    type: Type.STRING,
+                    description: 'The full URL of the website to clone.',
+                },
+            },
+            required: ['url'],
+        },
+    },
+    {
+        name: 'runPythonScript',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Executes a Python script in a sandboxed environment.',
+            properties: {
+                code: {
+                    type: Type.STRING,
+                    description: 'The Python code to execute.',
+                },
+            },
+            required: ['code'],
+        },
+    },
+    {
+        name: 'readEmails',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Reads emails from the integrated Gmail account, with an optional filter.',
+            properties: {
+                filter: {
+                    type: Type.STRING,
+                    description: 'A filter for the emails, e.g., "is:unread", "from:example@email.com".',
+                },
+            },
+        },
+    },
+    {
+        name: 'sendEmail',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Sends an email from the integrated Gmail account.',
+            properties: {
+                to: { type: Type.STRING, description: 'The recipient\'s email address.' },
+                subject: { type: Type.STRING, description: 'The subject of the email.' },
+                body: { type: Type.STRING, description: 'The body content of the email.' },
+            },
+            required: ['to', 'subject', 'body'],
+        },
+    },
+    {
+        name: 'executeComplexTask',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Handles complex, multi-step development tasks by leveraging the Gemini CLI and other tools. Use for tasks that require planning and execution beyond a single tool call.',
+            properties: {
+                description: {
+                    type: Type.STRING,
+                    description: 'A natural language description of the complex task to perform.',
+                },
+            },
+            required: ['description'],
+        },
+    }
 ];

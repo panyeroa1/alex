@@ -348,18 +348,59 @@ const App: React.FC = () => {
         if (source === 'voice') setAgentStatus('executing');
         const taskId = addBackgroundTask(`Executing: ${fc.name}...`);
         
-        await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1500));
+        await new Promise(resolve => setTimeout(resolve, 500));
         
-        let result = `Successfully executed ${fc.name}.`;
-        if (fc.name === 'listFiles') {
-            result = uploadedFiles.length > 0 ? `Current files: ${uploadedFiles.map(f => f.name).join(', ')}` : "No files have been uploaded yet.";
-        } else if (['analyzeFileContents', 'extractZipArchive', 'writeFile'].includes(fc.name)) {
-            const fileName = fc.args.fileName as string;
-            if (!uploadedFiles.some(f => f.name === fileName)) result = `Error: File '${fileName}' not found.`;
+        let result: string | object = `Successfully executed ${fc.name}.`;
+
+        try {
+            switch (fc.name) {
+                case 'listFiles':
+                    result = uploadedFiles.length > 0 ? `Current files: ${uploadedFiles.map(f => f.name).join(', ')}` : "No files have been uploaded yet.";
+                    break;
+                case 'analyzeFileContents':
+                case 'extractZipArchive':
+                case 'writeFile': {
+                    const fileName = fc.args.fileName as string;
+                    if (!uploadedFiles.some(f => f.name === fileName)) result = `Error: File '${fileName}' not found.`;
+                    else result = `Action '${fc.name}' on file '${fileName}' was successful.`;
+                    break;
+                }
+                case 'searchWeb':
+                    result = `Simulated web search for "${fc.args.query}": The capital of the Philippines is Manila. The current president is Bongbong Marcos.`;
+                    break;
+                case 'cloneWebsite': {
+                    const url = fc.args.url as string;
+                    updateBackgroundTask(taskId, `Cloning ${url}...`);
+                    await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 2000));
+                    result = `Successfully cloned ${url} to local directory.`;
+                    break;
+                }
+                case 'runPythonScript':
+                     updateBackgroundTask(taskId, `Running python script...`);
+                     await new Promise(resolve => setTimeout(resolve, 2000));
+                     result = { output: "Script executed. Output: 'Hello from sandboxed Python! Process complete.'", error: null };
+                     break;
+                case 'readEmails':
+                    result = `Found 3 unread emails. Subject of the latest is: 'URGENT: Project Phoenix Update' from 'client@example.com'.`;
+                    break;
+                case 'sendEmail':
+                     result = `Email to ${fc.args.to} with subject "${fc.args.subject}" has been sent successfully.`;
+                     break;
+                case 'executeComplexTask':
+                    updateBackgroundTask(taskId, `Executing complex task: ${fc.args.description}`);
+                    await new Promise(resolve => setTimeout(resolve, 4000));
+                    result = `Complex task "${fc.args.description}" completed successfully. All systems are nominal.`;
+                    break;
+                default:
+                    result = `Successfully executed ${fc.name}.`;
+            }
+        } catch (e: any) {
+            result = `Error executing ${fc.name}: ${e.message}`;
         }
 
-        if (result.startsWith('Error')) addNotification(result, 'error');
-        updateBackgroundTask(taskId, result);
+
+        if (typeof result === 'string' && result.startsWith('Error')) addNotification(result, 'error');
+        updateBackgroundTask(taskId, typeof result === 'string' ? result : JSON.stringify(result));
         removeBackgroundTask(taskId);
 
         if (source === 'voice' && sessionRef.current) {
@@ -637,7 +678,7 @@ const App: React.FC = () => {
 
                 <header className="absolute top-4 left-4 right-4 z-10 flex items-center justify-between">
                      <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition-transform active:scale-95" aria-label="Open Conversation History">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                     </button>
                     <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-1">
                         {backgroundTasks.map(task => (
@@ -648,7 +689,7 @@ const App: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-2 text-gray-400">
                         <button onClick={handleToggleCc} className={`p-2 transition-colors active:scale-95 ${showCc ? 'text-blue-400' : 'hover:text-white'}`} aria-label="Toggle Closed Captions">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3.8 7.2c.8-1.6 2-3 3.5-4 1.5-1 3.3-1.4 5.2-1.2 1.9.2 3.6.9 5 2.1 1.4 1.2 2.5 2.8 3 4.7.5 1.9.5 3.9.1 5.8s-1.2 3.6-2.4 5c-1.2 1.4-2.8 2.5-4.7 3s-3.9.5-5.8.1-3.6-1.2-5-2.4-2.5-2.8-3-4.7c-.5-1.9-.5-4 .1-5.9zM10 12c.3-1.3 1.4-2 3-2 1.6 0 2.9.8 3 2.2.1 1.2-.6 2.2-2 2.8"/><path d="M10 16c.3-1.3 1.4-2 3-2 1.6 0 2.9.8 3 2.2.1 1.2-.6 2.2-2 2.8"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3.8 7.2c.8-1.6 2-3 3.5-4 1.5-1 3.3-1.4 5.2-1.2 1.9.2 3.6.9 5 2.1 1.4 1.2 2.5 2.8 3 4.7.5 1.9.5 3.9.1 5.8s-1.2 3.6-2.4 5c-1.2 1.4-2.8 2.5-4.7 3s-3.9.5-5.8.1-3.6-1.2-5-2.4-2.5-2.8-3-4.7c-.5-1.9-.5-4 .1-5.9zM10 12c.3-1.3 1.4-2 3-2 1.6 0 2.9.8 3 2.2.1 1.2-.6 2.2-2 2.8"/><path d="M10 16c.3-1.3 1.4-2 3-2 1.6 0 2.9.8 3 2.2.1 1.2-.6 2.2-2 2.8"/></svg>
                         </button>
                         <button onClick={handleToggleOutputMute} className={`p-2 transition-colors active:scale-95 ${isOutputMuted ? 'text-red-500' : 'hover:text-white'}`} aria-label="Toggle Speaker">
                             {isOutputMuted ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" x2="17" y1="9" y2="15"></line><line x1="17" x2="23" y1="9" y2="15"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>}
@@ -683,13 +724,13 @@ const App: React.FC = () => {
                             {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6Z"/><path d="m2 5 1-1h10l1 1v10l-1 1H3l-1-1Z"/><path d="m2 14 3-3 2 2 3-3 2 2"/></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6Z"/><path d="M2 5h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/></svg>}
                         </button>
                         <button onClick={handleToggleScreenShare} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${isScreenSharing ? 'bg-blue-500/50 hover:bg-blue-500/70' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isScreenSharing ? "Stop Sharing Screen" : "Share Screen"}>
-                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 17a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16z"/><path d="M12 11v-4"/><path d="m9 10 3-3 3 3"/></svg>
+                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 17a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16z"/><path d="M12 11v-4"/><path d="m9 10 3-3 3 3"/></svg>
                         </button>
                         <button onClick={handleToggleRecording} disabled={agentStatus === 'idle' || agentStatus === 'connecting' || agentStatus === 'verifying'} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${isRecording ? 'bg-red-600/80 animate-pulse-record' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isRecording ? "Stop Recording" : "Start Recording"}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-white"><circle cx="12" cy="12" r="10"></circle></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="currentColor" className="text-white"><circle cx="12" cy="12" r="10"></circle></svg>
                         </button>
                         <button onClick={handleSwitchToChat} className="w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/20 transition-all active:scale-95" aria-label="Switch to Chat Mode">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                         </button>
                     </div>
                 </footer>

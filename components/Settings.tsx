@@ -12,7 +12,7 @@ interface SettingsProps {
 }
 
 type Tab = 'prompt' | 'integrations' | 'permissions';
-const INTEGRATION_LIST = ['GitHub', 'Jira', 'Slack'];
+const INTEGRATION_LIST = ['GitHub', 'Jira', 'Slack', 'Gmail'];
 
 export const Settings: React.FC<SettingsProps> = ({ 
     isOpen, 
