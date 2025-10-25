@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, FunctionCall, Chat } from '@google/genai';
-import { Orb } from './components/Orb';
+import { Orb, MiniOrb } from './components/Orb';
 import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, BackgroundTask, IntegrationCredentials, MediaItem } from './types';
 import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData } from './services/geminiService';
 import * as db from './services/supabaseService';
@@ -146,7 +146,8 @@ const ChatView: React.FC<{
     uploadedFiles: UploadedFile[];
     onFileUpload: (files: FileList) => void;
     onOpenSidebar: () => void;
-}> = ({ transcript, onSendMessage, onSwitchToVoice, uploadedFiles, onFileUpload, onOpenSidebar }) => {
+    agentStatus: AgentStatus;
+}> = ({ transcript, onSendMessage, onSwitchToVoice, uploadedFiles, onFileUpload, onOpenSidebar, agentStatus }) => {
     const [input, setInput] = useState('');
     const transcriptEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -173,11 +174,12 @@ const ChatView: React.FC<{
         <div className="absolute inset-0 z-30 bg-black flex flex-col p-4 font-sans">
              <div className="absolute inset-0 bg-gradient-to-b from-gray-900/50 via-black to-black opacity-30"></div>
             <header className="flex items-center justify-between pb-4 border-b border-white/10 z-10">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                     <button onClick={onOpenSidebar} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Open Conversation History">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                     </button>
                     <h1 className="text-xl font-bold">Alex</h1>
+                    <MiniOrb status={agentStatus} />
                 </div>
                 <button onClick={onSwitchToVoice} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Switch to Voice Mode">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
@@ -448,6 +450,35 @@ const App: React.FC = () => {
 
         try {
             switch (fc.name) {
+                 case 'listPipelines':
+                    result = "Available pipelines: production-deploy, staging-deploy, run-tests.";
+                    break;
+                case 'getPipelineStatus': {
+                    const pipelineName = fc.args.pipelineName as string;
+                    updateBackgroundTask(taskId, `Checking status for '${pipelineName}'...`);
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    const statuses = ['Succeeded', 'Failed', 'In Progress'];
+                    const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
+                    result = `Pipeline '${pipelineName}' last run status: ${randomStatus}.`;
+                    break;
+                }
+                case 'triggerPipeline': {
+                    const pipelineName = fc.args.pipelineName as string;
+                    updateBackgroundTask(taskId, `Triggering pipeline '${pipelineName}'...`);
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    updateBackgroundTask(taskId, `Pipeline '${pipelineName}' is now running.`);
+                    result = `Sige Boss, I've triggered the '${pipelineName}' pipeline. I'll monitor it for you.`;
+
+                    // Simulate the pipeline running in the background
+                    setTimeout(() => {
+                        const finalTaskId = addBackgroundTask(`Monitoring pipeline '${pipelineName}'...`);
+                        setTimeout(() => {
+                            updateBackgroundTask(finalTaskId, `Pipeline '${pipelineName}' completed successfully.`);
+                            removeBackgroundTask(finalTaskId);
+                        }, 5000 + Math.random() * 3000); 
+                    }, 2000);
+                    break;
+                }
                 case 'generateImage':
                     result = `Sige Boss, generating image based on: "${fc.args.prompt}". It will be ready in a moment.`;
                     addNotification('Simulating image generation...', 'info');
@@ -692,6 +723,7 @@ const App: React.FC = () => {
         updateTranscript('user', message);
         
         try {
+            setAgentStatus('executing');
             const response = await sendChatMessage(chatRef.current, message);
             if(response.functionCalls && response.functionCalls.length > 0){
                  for(const fc of response.functionCalls){
@@ -707,6 +739,8 @@ const App: React.FC = () => {
         } catch (error) {
             console.error("Chat error:", error);
             addNotification("Failed to send message.", "error");
+        } finally {
+            setAgentStatus('idle');
         }
     };
     
@@ -801,6 +835,7 @@ const App: React.FC = () => {
                     uploadedFiles={uploadedFiles}
                     onFileUpload={(files) => handleFileUpload(files)}
                     onOpenSidebar={() => setIsSidebarOpen(true)}
+                    agentStatus={agentStatus}
                 />
             )}
 

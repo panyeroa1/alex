@@ -214,6 +214,36 @@ export const DEV_TOOLS: FunctionDeclaration[] = [
             required: ['environment'],
         },
     },
+     {
+        name: 'listPipelines',
+        description: 'Lists available CI/CD pipelines.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {},
+        }
+    },
+    {
+        name: 'getPipelineStatus',
+        description: 'Checks the status of the latest run for a specific CI/CD pipeline.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                pipelineName: { type: Type.STRING, description: 'The name of the pipeline to check, e.g., "production-deploy".' },
+            },
+            required: ['pipelineName'],
+        }
+    },
+    {
+        name: 'triggerPipeline',
+        description: 'Triggers a new run for a specific CI/CD pipeline.',
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                pipelineName: { type: Type.STRING, description: 'The name of the pipeline to trigger.' },
+            },
+            required: ['pipelineName'],
+        }
+    },
     {
         name: 'rerouteTraffic',
         parameters: {

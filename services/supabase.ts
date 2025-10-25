@@ -12,15 +12,15 @@ export type Database = {
         // Supabase can struggle to infer these from the Row type when a jsonb column contains a complex array.
         Insert: {
           title: string;
-          // FIX: Using the specific ChatMessage[] type instead of a generic Json type resolves Supabase client type inference errors.
-          history: ChatMessage[];
+          // FIX: Using `any` for the complex jsonb type to resolve Supabase client type inference errors.
+          history: any;
           user_id: string;
           recording_url?: string | null;
         };
         Update: {
           title?: string;
-          // FIX: Using the specific ChatMessage[] type instead of a generic Json type resolves Supabase client type inference errors.
-          history?: ChatMessage[];
+          // FIX: Using `any` for the complex jsonb type to resolve Supabase client type inference errors.
+          history?: any;
           recording_url?: string | null;
         };
       };

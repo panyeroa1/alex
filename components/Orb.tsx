@@ -62,6 +62,25 @@ const AudioVisualizer: React.FC<{ analyser: AnalyserNode }> = ({ analyser }) => 
     return <canvas ref={canvasRef} width="320" height="320" className="absolute inset-0 w-full h-full" />;
 };
 
+const MiniOrb: React.FC<{ status: AgentStatus }> = ({ status }) => {
+    const statusClasses = () => {
+        switch (status) {
+            case 'listening':
+                return 'bg-green-400 animate-pulse-mini';
+            case 'speaking':
+                return 'bg-blue-400 animate-pulse-mini-fast';
+            case 'executing':
+                 return 'bg-amber-400 animate-pulse-mini-fast';
+            case 'connecting':
+            case 'verifying':
+                return 'bg-yellow-400 animate-pulse-mini';
+            default:
+                return 'bg-gray-500';
+        }
+    };
+    return <div className={`w-3 h-3 rounded-full transition-colors duration-300 ${statusClasses()}`}></div>;
+};
+
 
 const OrbGraphics: React.FC<{ status: AgentStatus; analyserNode: AnalyserNode | null; }> = ({ status, analyserNode }) => {
     const isVerifying = status === 'verifying';
@@ -125,6 +144,15 @@ export const Orb: React.FC<OrbProps> = ({ status, analyserNode }) => {
     return (
         <div className="w-full h-full relative">
             <OrbGraphics status={status} analyserNode={analyserNode} />
+            {status === 'idle' && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-16 h-16 bg-blue-500 rounded-full opacity-0 group-hover:opacity-50 transition-opacity duration-300 flex items-center justify-center">
+                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
+
+export { MiniOrb };
