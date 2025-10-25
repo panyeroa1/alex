@@ -8,7 +8,6 @@ interface OrbProps {
 
 const AudioVisualizer: React.FC<{ analyser: AnalyserNode }> = ({ analyser }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    // FIX: Initialize useRef with null to prevent "Expected 1 arguments, but got 0" error.
     const animationFrameId = useRef<number | null>(null);
 
     useEffect(() => {
@@ -73,6 +72,17 @@ const OrbGraphics: React.FC<{ status: AgentStatus; analyserNode: AnalyserNode | 
     const isActive = isListening || isSpeaking || isExecuting;
     const isIdle = status === 'idle';
 
+    const plasmaAnimationClass = () => {
+        switch (status) {
+            case 'speaking': return 'animate-plasma-fast';
+            case 'listening':
+            case 'executing':
+                return 'animate-plasma-medium';
+            default:
+                return 'animate-plasma-slow';
+        }
+    };
+    
     return (
         <div className="absolute inset-0 flex items-center justify-center">
             {/* Outer Glows */}
@@ -91,9 +101,10 @@ const OrbGraphics: React.FC<{ status: AgentStatus; analyserNode: AnalyserNode | 
             
             {/* Core Orb */}
             <div className={`w-full h-full rounded-full overflow-hidden transition-all duration-500 ease-in-out shadow-2xl shadow-black relative ${isListening ? 'scale-105' : ''} ${isSpeaking ? 'scale-110' : ''}`}>
-                 <div className="w-full h-full bg-black bg-gradient-radial from-[#E4C7B8] via-[#B5654D] to-[#2E2522]"></div>
-                 {/* Rumbling effect for active states */}
-                 {isActive && <div className="absolute inset-0 w-full h-full animate-rumble"></div>}
+                 <div className={`w-full h-full bg-black bg-gradient-radial from-[#E4C7B8] via-[#B5654D] to-[#2E2522] ${plasmaAnimationClass()}`}></div>
+                 
+                 {/* Executing Scanner Effect */}
+                 {isExecuting && <div className="absolute inset-0 w-full h-full animate-scanner"></div>}
             </div>
 
             {/* Audio Visualizer */}

@@ -8,6 +8,64 @@ import { DEFAULT_SYSTEM_PROMPT, DEV_TOOLS } from './constants';
 import { Sidebar } from './components/Sidebar';
 import { Settings } from './components/Settings';
 
+// --- Python Execution Service (using Pyodide) ---
+declare global {
+    interface Window {
+        loadPyodide: (config?: { indexURL: string }) => Promise<any>;
+    }
+}
+
+let pyodide: any = null;
+
+const initializePyodide = async (): Promise<void> => {
+    if (pyodide || typeof window.loadPyodide !== 'function') {
+        return;
+    }
+    try {
+        console.log("Loading Pyodide...");
+        pyodide = await window.loadPyodide({
+            indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/",
+        });
+        console.log("Pyodide loaded successfully.");
+    } catch (error) {
+        console.error("Failed to load Pyodide:", error);
+        throw new Error("Could not initialize Python environment.");
+    }
+};
+
+interface PythonExecutionResult {
+    output: string;
+    error: string | null;
+}
+
+const executePython = async (code: string): Promise<PythonExecutionResult> => {
+    if (!pyodide) {
+        throw new Error("Pyodide is not initialized.");
+    }
+
+    try {
+        let stdout = '';
+        let stderr = '';
+        pyodide.setStdout({ batched: (str: string) => { stdout += str + '\n'; } });
+        pyodide.setStderr({ batched: (str: string) => { stderr += str + '\n'; } });
+
+        await pyodide.runPythonAsync(code);
+
+        return {
+            output: stdout.trim(),
+            error: stderr.trim() || null,
+        };
+    } catch (e: any) {
+        return {
+            output: '',
+            error: e.message,
+        };
+    } finally {
+        pyodide.setStdout({});
+        pyodide.setStderr({});
+    }
+};
+
 const BiometricsEnrollment: React.FC<{ onEnrollmentComplete: () => void; }> = ({ onEnrollmentComplete }) => {
     const [status, setStatus] = useState<'idle' | 'prompting' | 'recording' | 'processing' | 'done'>('idle');
     const [countdown, setCountdown] = useState(3);
@@ -113,20 +171,21 @@ const ChatView: React.FC<{
 
     return (
         <div className="absolute inset-0 z-30 bg-black flex flex-col p-4 font-sans">
-            <header className="flex items-center justify-between pb-4 border-b border-white/10">
+             <div className="absolute inset-0 bg-gradient-to-b from-gray-900/50 via-black to-black opacity-30"></div>
+            <header className="flex items-center justify-between pb-4 border-b border-white/10 z-10">
                 <div className="flex items-center gap-2">
-                    <button onClick={onOpenSidebar} className="p-2 rounded-full hover:bg-white/10 transition-transform active:scale-95" aria-label="Open Conversation History">
+                    <button onClick={onOpenSidebar} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Open Conversation History">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                     </button>
                     <h1 className="text-xl font-bold">Alex</h1>
                 </div>
-                <button onClick={onSwitchToVoice} className="p-2 rounded-full hover:bg-white/10 transition-transform active:scale-95" aria-label="Switch to Voice Mode">
+                <button onClick={onSwitchToVoice} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Switch to Voice Mode">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
                 </button>
             </header>
-            <main className="flex-1 overflow-y-auto py-4 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent">
+            <main className="flex-1 overflow-y-auto py-4 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent z-10">
                 {transcript.map((msg) => (
-                    <div key={msg.id} className={`flex mb-3 ${msg.speaker === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div key={msg.id} className={`flex mb-3 animate-chat-message-in ${msg.speaker === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-xs md:max-w-md lg:max-w-lg px-4 py-2 rounded-2xl ${msg.speaker === 'user' ? 'bg-blue-600 rounded-br-none' : 'bg-gray-700 rounded-bl-none'}`}>
                            <p className="text-white break-words">{msg.text}</p>
                         </div>
@@ -139,7 +198,7 @@ const ChatView: React.FC<{
                 )}
                 <div ref={transcriptEndRef} />
             </main>
-            <footer className="flex items-center gap-2 pt-4 border-t border-white/10">
+            <footer className="flex items-center gap-2 pt-4 border-t border-white/10 z-10">
                  <input type="file" ref={fileInputRef} onChange={handleFileChange} multiple className="hidden" accept="*/*" />
                  <button onClick={() => fileInputRef.current?.click()} className="p-3 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Attach File">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.59a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
@@ -150,9 +209,9 @@ const ChatView: React.FC<{
                     onChange={(e) => setInput(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleSend()}
                     placeholder="Message Alex..."
-                    className="flex-1 bg-white/10 rounded-full px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 bg-white/10 rounded-full px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 />
-                <button onClick={handleSend} className="p-3 rounded-full bg-blue-600 hover:bg-blue-700 transition-colors active:scale-95" aria-label="Send Message">
+                <button onClick={handleSend} className="p-3 rounded-full bg-blue-600 hover:bg-blue-700 transition-all active:scale-95" aria-label="Send Message">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                 </button>
             </footer>
@@ -181,6 +240,7 @@ const App: React.FC = () => {
     const [integrations, setIntegrations] = useState<IntegrationCredentials>({});
     const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
     const [mediaLibrary, setMediaLibrary] = useState<MediaItem[]>([]);
+    const [isPyodideReady, setIsPyodideReady] = useState(false);
     
     const sessionRef = useRef<LiveSession | null>(null);
     const chatRef = useRef<Chat | null>(null);
@@ -250,6 +310,16 @@ const App: React.FC = () => {
 
         if (enrolled) {
             initializeApp();
+             // Initialize Pyodide in the background
+            initializePyodide()
+                .then(() => {
+                    setIsPyodideReady(true);
+                    addNotification("Python environment ready.", "success");
+                })
+                .catch(err => {
+                    console.error("Failed to load Pyodide:", err);
+                    addNotification("Failed to load Python environment.", "error");
+                });
         }
     }, [isEnrolled, addNotification, handleNewConversation]);
 
@@ -434,11 +504,21 @@ const App: React.FC = () => {
                     result = `Successfully cloned ${url} to local directory.`;
                     break;
                 }
-                case 'runPythonScript':
+                case 'runPythonScript': {
                      updateBackgroundTask(taskId, `Running python script...`);
-                     await new Promise(resolve => setTimeout(resolve, 2000));
-                     result = { output: "Script executed. Output: 'Hello from sandboxed Python! Process complete.'", error: null };
+                      if (!isPyodideReady) {
+                        result = "Python environment is not ready. Please wait a moment and try again.";
+                        addNotification("Pyodide is still initializing.", "info");
+                        break;
+                     }
+                     try {
+                        const code = fc.args.code as string;
+                        result = await executePython(code);
+                     } catch(e: any) {
+                        result = { output: '', error: `Failed to execute Python script: ${e.message}` };
+                     }
                      break;
+                }
                 case 'readEmails':
                     result = `Found 3 unread emails. Subject of the latest is: 'URGENT: Project Phoenix Update' from 'client@example.com'.`;
                     break;
@@ -467,7 +547,7 @@ const App: React.FC = () => {
              setAgentStatus('listening');
         }
         return result;
-    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary]);
+    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady]);
 
     const endSession = useCallback(async () => {
         if (isRecording) {
@@ -700,16 +780,19 @@ const App: React.FC = () => {
                 onSelectConversation={handleSelectConversation}
                 onNewConversation={() => handleNewConversation()}
             />
-            <Settings 
-                isOpen={isSettingsOpen} 
-                onClose={() => setIsSettingsOpen(false)} 
-                systemPrompt={systemPrompt}
-                onSaveSystemPrompt={handleSaveSystemPrompt}
-                integrations={integrations}
-                onSaveIntegration={handleSaveIntegration}
-                mediaLibrary={mediaLibrary}
-                onSaveMediaLibrary={handleSaveMediaLibrary}
-            />
+            {isSettingsOpen && (
+                <Settings 
+                    isOpen={isSettingsOpen} 
+                    onClose={() => setIsSettingsOpen(false)} 
+                    systemPrompt={systemPrompt}
+                    onSaveSystemPrompt={handleSaveSystemPrompt}
+                    integrations={integrations}
+                    onSaveIntegration={handleSaveIntegration}
+                    mediaLibrary={mediaLibrary}
+                    onSaveMediaLibrary={handleSaveMediaLibrary}
+                />
+            )}
+            
             {view === 'chat' && (
                 <ChatView 
                     transcript={transcript} 
@@ -720,7 +803,8 @@ const App: React.FC = () => {
                     onOpenSidebar={() => setIsSidebarOpen(true)}
                 />
             )}
-            <div className={`transition-opacity duration-500 ${view === 'chat' ? 'opacity-0 pointer-events-none' : 'opacity-100'} h-full flex flex-col`}>
+
+            <div className={`transition-opacity duration-500 ease-in-out ${view === 'chat' ? 'opacity-0 pointer-events-none' : 'opacity-100'} h-full flex flex-col`}>
                 <video ref={videoRef} autoPlay muted playsInline className={`absolute top-0 left-0 w-full h-full object-cover transition-opacity duration-500 ${isVideoEnabled ? 'opacity-30' : 'opacity-0'}`}></video>
                 <div className="absolute top-0 left-0 w-full h-full bg-black/50"></div>
                 
@@ -733,7 +817,7 @@ const App: React.FC = () => {
                 </div>
 
                 <header className="absolute top-4 left-4 right-4 z-10 flex items-center justify-between">
-                     <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition-transform active:scale-95" aria-label="Open Conversation History">
+                     <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Open Conversation History">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                     </button>
                     <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-1">
@@ -744,13 +828,13 @@ const App: React.FC = () => {
                         ))}
                     </div>
                     <div className="flex items-center gap-2 text-gray-400">
-                        <button onClick={handleToggleCc} className={`p-2 transition-colors active:scale-95 ${showCc ? 'text-blue-400' : 'hover:text-white'}`} aria-label="Toggle Closed Captions">
+                        <button onClick={handleToggleCc} className={`p-2 transition-all active:scale-95 ${showCc ? 'text-blue-400' : 'hover:text-white'}`} aria-label="Toggle Closed Captions">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3.8 7.2c.8-1.6 2-3 3.5-4 1.5-1 3.3-1.4 5.2-1.2 1.9.2 3.6.9 5 2.1 1.4 1.2 2.5 2.8 3 4.7.5 1.9.5 3.9.1 5.8s-1.2 3.6-2.4 5c-1.2 1.4-2.8 2.5-4.7 3s-3.9.5-5.8.1-3.6-1.2-5-2.4-2.5-2.8-3-4.7c-.5-1.9-.5-4 .1-5.9zM10 12c.3-1.3 1.4-2 3-2 1.6 0 2.9.8 3 2.2.1 1.2-.6 2.2-2 2.8"/><path d="M10 16c.3-1.3 1.4-2 3-2 1.6 0 2.9.8 3 2.2.1 1.2-.6 2.2-2 2.8"/></svg>
                         </button>
-                        <button onClick={handleToggleOutputMute} className={`p-2 transition-colors active:scale-95 ${isOutputMuted ? 'text-red-500' : 'hover:text-white'}`} aria-label="Toggle Speaker">
+                        <button onClick={handleToggleOutputMute} className={`p-2 transition-all active:scale-95 ${isOutputMuted ? 'text-red-500' : 'hover:text-white'}`} aria-label="Toggle Speaker">
                             {isOutputMuted ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" x2="17" y1="9" y2="15"></line><line x1="17" x2="23" y1="9" y2="15"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>}
                         </button>
-                        <button onClick={() => setIsSettingsOpen(true)} className="p-2 transition-colors hover:text-white active:scale-95" aria-label="Open Settings">
+                        <button onClick={() => setIsSettingsOpen(true)} className="p-2 transition-all hover:text-white active:scale-95" aria-label="Open Settings">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                         </button>
                     </div>
@@ -776,16 +860,16 @@ const App: React.FC = () => {
                 
                 <footer className="absolute bottom-0 left-0 right-0 p-4 md:p-6 z-10">
                     <div className="flex justify-around items-center max-w-xs md:max-w-sm mx-auto bg-black/20 backdrop-blur-md p-2 rounded-full">
-                        <button onClick={handleToggleVideo} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all active:scale-95 ${isVideoEnabled ? 'bg-blue-500/50 hover:bg-blue-500/70' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isVideoEnabled ? "Turn off Video" : "Turn on Video"}>
+                        <button onClick={handleToggleVideo} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all hover:scale-110 active:scale-100 ${isVideoEnabled ? 'bg-blue-500/50 hover:bg-blue-500/70' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isVideoEnabled ? "Turn off Video" : "Turn on Video"}>
                             {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6Z"/><path d="m2 5 1-1h10l1 1v10l-1 1H3l-1-1Z"/><path d="m2 14 3-3 2 2 3-3 2 2"/></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6Z"/><path d="M2 5h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/></svg>}
                         </button>
-                        <button onClick={handleToggleScreenShare} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${isScreenSharing ? 'bg-blue-500/50 hover:bg-blue-500/70' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isScreenSharing ? "Stop Sharing Screen" : "Share Screen"}>
+                        <button onClick={handleToggleScreenShare} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all hover:scale-110 active:scale-100 disabled:opacity-30 disabled:pointer-events-none ${isScreenSharing ? 'bg-blue-500/50 hover:bg-blue-500/70' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isScreenSharing ? "Stop Sharing Screen" : "Share Screen"}>
                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 17a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16z"/><path d="M12 11v-4"/><path d="m9 10 3-3 3 3"/></svg>
                         </button>
-                        <button onClick={handleToggleRecording} disabled={agentStatus === 'idle' || agentStatus === 'connecting' || agentStatus === 'verifying'} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${isRecording ? 'bg-red-600/80 animate-pulse-record' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isRecording ? "Stop Recording" : "Start Recording"}>
+                        <button onClick={handleToggleRecording} disabled={agentStatus === 'idle' || agentStatus === 'connecting' || agentStatus === 'verifying'} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all hover:scale-110 active:scale-100 disabled:opacity-30 disabled:pointer-events-none ${isRecording ? 'bg-red-600/80 animate-pulse-record' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isRecording ? "Stop Recording" : "Start Recording"}>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="currentColor" className="text-white"><circle cx="12" cy="12" r="10"></circle></svg>
                         </button>
-                        <button onClick={handleSwitchToChat} className="w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/20 transition-all active:scale-95" aria-label="Switch to Chat Mode">
+                        <button onClick={handleSwitchToChat} className="w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/20 transition-all hover:scale-110 active:scale-100" aria-label="Switch to Chat Mode">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                         </button>
                     </div>
