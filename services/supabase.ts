@@ -15,15 +15,15 @@ export type Database = {
         // By specifying `ChatMessage[]` for the history field, we ensure the client uses the correct type.
         Insert: {
           title: string;
-          // FIX: Using `any` here to bypass a complex type inference issue with Supabase where ChatMessage[] was causing the payload type to resolve to `never`.
-          history: any;
+          // FIX: Using `ChatMessage[]` instead of `any` to correctly type the jsonb `history` column.
+          history: ChatMessage[];
           user_id: string;
           recording_url?: string | null;
         };
         Update: {
           title?: string;
-          // FIX: Using `any` here to bypass a complex type inference issue with Supabase where ChatMessage[] was causing the payload type to resolve to `never`.
-          history?: any;
+          // FIX: Using `ChatMessage[]` instead of `any` to correctly type the jsonb `history` column.
+          history?: ChatMessage[];
           recording_url?: string | null;
         };
       };

@@ -377,3 +377,43 @@ export async function synthesizeSpeech(text: string): Promise<string> {
     }
     return base64Audio;
 }
+
+export async function analyzeCode(fileName: string, base64Content: string): Promise<string> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    let decodedCode: string;
+    try {
+        decodedCode = atob(base64Content);
+    } catch (e) {
+        console.error("Failed to decode base64 content for", fileName);
+        return `Error: Could not decode the content of ${fileName}. It may not be a text-based file.`;
+    }
+
+    const prompt = `
+You are an expert, automated CLI code analysis agent.
+Your task is to analyze the following code from the file named "${fileName}".
+Do not provide a greeting or any conversational filler. Go straight to the analysis.
+Provide a detailed report in Markdown format. Your analysis must cover:
+1.  **Potential Bugs**: Identify any logic errors, race conditions, or potential runtime exceptions.
+2.  **Security Vulnerabilities**: Look for common vulnerabilities like injection attacks, insecure data handling, etc.
+3.  **Performance Improvements**: Suggest ways to optimize the code for better performance and efficiency.
+4.  **Code Style & Readability**: Comment on code structure, naming conventions, and suggest improvements for clarity.
+5.  **Overall Summary**: Conclude with a brief summary of the code's health.
+
+--- CODE FOR ANALYSIS ---
+${decodedCode}
+--- END OF CODE ---
+
+Begin your report now.
+`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-pro',
+            contents: prompt,
+        });
+        return response.text;
+    } catch (error) {
+        console.error(`Code analysis failed for ${fileName}:`, error);
+        return `Error: Could not analyze the code for ${fileName}.`;
+    }
+}

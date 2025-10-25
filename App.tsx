@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, FunctionCall, Chat } from '@google/genai';
 import { Luto, MiniLuto } from './components/Orb';
 import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, BackgroundTask, IntegrationCredentials, MediaItem, ProjectFile } from './types';
-import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData } from './services/geminiService';
+import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData, analyzeCode } from './services/geminiService';
 import * as db from './services/supabaseService';
 import { DEFAULT_SYSTEM_PROMPT, DEV_TOOLS } from './constants';
 import { Sidebar } from './components/Sidebar';
@@ -189,7 +189,7 @@ const ChatView: React.FC<{
                 {transcript.map((msg) => (
                     <div key={msg.id} className={`flex mb-3 animate-chat-message-in ${msg.speaker === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-xs md:max-w-md lg:max-w-lg px-4 py-2 rounded-2xl ${msg.speaker === 'user' ? 'bg-blue-600 rounded-br-none' : 'bg-gray-700 rounded-bl-none'}`}>
-                           <p className="text-white break-words">{msg.text}</p>
+                           <p className="text-white break-words" dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br />') }}></p>
                         </div>
                     </div>
                 ))}
@@ -811,11 +811,66 @@ const App: React.FC = () => {
         setMediaLibrary(library);
         localStorage.setItem('alex_media_library', JSON.stringify(library));
     };
+    
+    const runCliAgentAnalysis = useCallback(async (newFiles: ProjectFile[]) => {
+        if (newFiles.length === 0) return;
+
+        addNotification('New project files detected. CLI agent starting analysis...', 'info');
+        const taskId = addBackgroundTask('CLI Agent: Initializing...');
+
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        updateBackgroundTask(taskId, `CLI Agent: Creating project directory...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        let agentReport = "#### **CLI Agent Auto-Analysis Report**\n\n";
+
+        for (const file of newFiles) {
+            updateBackgroundTask(taskId, `CLI Agent: Analyzing ${file.name}...`);
+            
+            const isTextFile = file.type.startsWith('text/') || 
+                               ['application/javascript', 'application/json', 'application/typescript', 'application/xml', 'text/x-python'].includes(file.type) ||
+                               !file.type || file.name.endsWith('.py') || file.name.endsWith('.js') || file.name.endsWith('.ts') || file.name.endsWith('.html') || file.name.endsWith('.css');
+
+            if (isTextFile) {
+                const analysisResult = await analyzeCode(file.name, file.content);
+                const reportForFile = `### Analysis for \`${file.name}\`\n\n${analysisResult}\n\n---\n\n`;
+                agentReport += reportForFile;
+            } else {
+                const nonTextReport = `### Analysis for \`${file.name}\`\n\n*Skipped analysis: File does not appear to be a text-based code file (MIME type: ${file.type}).*\n\n---\n\n`;
+                agentReport += nonTextReport;
+            }
+        }
+
+        updateTranscript('alex', agentReport);
+        
+        const summaryMessage = "Sige Boss, tapos na ang analysis ng agent. Yung detailed report, nilagay ko na sa transcript para ma-review mo.";
+        updateTranscript('alex', summaryMessage);
+
+        updateBackgroundTask(taskId, `CLI Agent: Project analysis complete.`);
+        removeBackgroundTask(taskId);
+        
+        if (agentStatus !== 'idle' && agentStatus !== 'connecting' && agentStatus !== 'verifying') {
+            try {
+                const audioBase64 = await synthesizeSpeech(summaryMessage);
+                await playAudio(audioBase64);
+            } catch (error) {
+                console.error("Failed to synthesize confirmation speech:", error);
+            }
+        }
+
+    }, [addBackgroundTask, updateBackgroundTask, removeBackgroundTask, addNotification, updateTranscript, playAudio, agentStatus]);
+
 
     const handleSaveProjectFiles = (files: ProjectFile[]) => {
+        const newlyAddedFiles = files.filter(f => !projectFiles.some(pf => pf.name === f.name));
+        
         setProjectFiles(files);
         localStorage.setItem('alex_project_files', JSON.stringify(files));
         addNotification(`${files.length} project file(s) saved.`, 'success');
+
+        if (newlyAddedFiles.length > 0) {
+            runCliAgentAnalysis(newlyAddedFiles);
+        }
     };
     
     const toggleSession = useCallback(() => { agentStatus !== 'idle' ? endSession() : startSession(); }, [endSession, startSession, agentStatus]);
@@ -930,7 +985,7 @@ const App: React.FC = () => {
                             {transcript.map((msg) => (
                                 <div key={msg.id} className="text-left mb-2">
                                     <span className={`font-bold ${msg.speaker === 'alex' ? 'text-blue-300' : 'text-green-300'}`}>{msg.speaker === 'alex' ? 'Alex' : 'You'}: </span>
-                                    <span>{msg.text}</span>
+                                    <span dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br />') }}></span>
                                 </div>
                             ))}
                         </div>
