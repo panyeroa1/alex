@@ -1,8 +1,6 @@
-// FIX: LiveSession and Chat are not exported from @google/genai's root.
 import { GoogleGenAI, LiveServerMessage, Modality, Blob, FunctionDeclaration, FunctionCall, Chat, Part, GenerateContentResponse } from "@google/genai";
 import { ChatMessage } from "../types";
 
-// FIX: Define LiveSession interface locally as it is not exported from the SDK.
 export interface LiveSession {
     close(): void;
     sendRealtimeInput(params: { media: Blob }): void;
@@ -101,23 +99,24 @@ export async function connectToLiveSession(
 ): Promise<{ 
     session: LiveSession, 
     audioStream: MediaStream, 
-    toggleInputMute: (mute: boolean) => void,
     toggleOutputMute: (mute: boolean) => void,
     outputAudioContext: AudioContext,
-    outputGainNode: GainNode
+    outputGainNode: GainNode,
+    inputAnalyser: AnalyserNode,
+    outputAnalyser: AnalyserNode,
 }> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
     outputGainNode = outputAudioContext.createGain();
-    outputGainNode.connect(outputAudioContext.destination);
+    const outputAnalyser = outputAudioContext.createAnalyser();
+    outputGainNode.connect(outputAnalyser);
+    outputAnalyser.connect(outputAudioContext.destination);
 
     let nextStartTime = 0;
     const sources = new Set<AudioBufferSourceNode>();
     let speakingTimeout: number;
 
-    let isInputMuted = false;
-    const toggleInputMute = (mute: boolean) => { isInputMuted = mute; };
     const toggleOutputMute = (mute: boolean) => {
         outputGainNode?.gain.setValueAtTime(mute ? 0 : 1, outputAudioContext!.currentTime);
     };
@@ -188,18 +187,19 @@ export async function connectToLiveSession(
         echoCancellation: true,
     } });
     inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+    const inputAnalyser = inputAudioContext.createAnalyser();
     mediaStreamSource = inputAudioContext.createMediaStreamSource(audioStream);
     scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
 
+    mediaStreamSource.connect(inputAnalyser);
+    inputAnalyser.connect(scriptProcessor);
+    scriptProcessor.connect(inputAudioContext.destination);
+
     scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
-        if (isInputMuted) return;
         const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
         const pcmBlob = createAudioBlob(inputData);
         sessionPromise.then((session) => session.sendRealtimeInput({ media: pcmBlob }));
     };
-
-    mediaStreamSource.connect(scriptProcessor);
-    scriptProcessor.connect(inputAudioContext.destination);
 
     if (config.videoElement) {
         const canvas = document.createElement('canvas');
@@ -223,7 +223,7 @@ export async function connectToLiveSession(
     }
 
     const session = await sessionPromise;
-    return { session, audioStream, toggleInputMute, toggleOutputMute, outputAudioContext: outputAudioContext!, outputGainNode: outputGainNode! };
+    return { session, audioStream, toggleOutputMute, outputAudioContext: outputAudioContext!, outputGainNode: outputGainNode!, inputAnalyser, outputAnalyser };
 }
 
 export async function disconnectLiveSession(session: LiveSession, audioStream: MediaStream | null, videoStream: MediaStream | null) {
@@ -247,7 +247,7 @@ export async function disconnectLiveSession(session: LiveSession, audioStream: M
 
 // --- Chat Session Management ---
 
-export async function startChatSession(history: ChatMessage[]): Promise<Chat> {
+export async function startChatSession(history: ChatMessage[], systemInstruction: string): Promise<Chat> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const formattedHistory = history.map(msg => ({
         role: msg.speaker === 'user' ? 'user' : 'model',
@@ -256,12 +256,14 @@ export async function startChatSession(history: ChatMessage[]): Promise<Chat> {
     const chat = ai.chats.create({
         model: 'gemini-2.5-flash',
         history: formattedHistory,
+        config: {
+            systemInstruction: systemInstruction,
+        }
     });
     return chat;
 }
 
 export async function sendChatMessage(chat: Chat, message: string, extraParts?: Part[]): Promise<GenerateContentResponse> {
-    // FIX: The `chat.sendMessage` method expects a `SendMessageParameters` object, not a raw string.
     if (!extraParts) {
         const response = await chat.sendMessage({ message });
         return response;
@@ -273,7 +275,6 @@ export async function sendChatMessage(chat: Chat, message: string, extraParts?: 
     }
     parts.push(...extraParts);
     
-    // FIX: The `chat.sendMessage` method expects a `SendMessageParameters` object. The `message` property can be an array of `Part` objects.
     const response = await chat.sendMessage({ message: parts });
     return response;
 }
@@ -299,8 +300,6 @@ export async function generateConversationTitle(history: ChatMessage[]): Promise
     }
 }
 
-// FIX: Changed `Blob` to `globalThis.Blob` to explicitly use the native browser Blob type,
-// resolving type conflicts with the SDK's Blob type and allowing access to properties like `.type`.
 export async function analyzeAudio(audioBlob: globalThis.Blob): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const audioBase64 = await blobToBase64(audioBlob);
@@ -333,7 +332,6 @@ export async function synthesizeSpeech(text: string): Promise<string> {
             responseModalities: [Modality.AUDIO],
             speechConfig: {
                 voiceConfig: {
-                    // Use the same voice as the live session for consistency
                     prebuiltVoiceConfig: { voiceName: 'Charon' },
                 },
             },

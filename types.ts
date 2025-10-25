@@ -26,3 +26,12 @@ export interface Conversation {
     user_id?: string | null;
     recording_url?: string | null;
 }
+
+export interface BackgroundTask {
+    id: number;
+    message: string;
+}
+
+export interface IntegrationCredentials {
+    [key: string]: any;
+}

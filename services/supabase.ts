@@ -1,5 +1,6 @@
 
 
+
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
 import { Conversation, ChatMessage } from '../types';
@@ -14,13 +15,15 @@ export type Database = {
         // Supabase was incorrectly inferring the types as `never`.
         Insert: {
           title: string;
-          history: ChatMessage[];
+          // FIX: Use 'any' to avoid complex type inference issues with supabase-js client for jsonb columns.
+          history: any;
           user_id: string;
           recording_url?: string | null;
         };
         Update: {
           title?: string;
-          history?: ChatMessage[];
+          // FIX: Use 'any' to avoid complex type inference issues with supabase-js client for jsonb columns.
+          history?: any;
           recording_url?: string | null;
         };
       };

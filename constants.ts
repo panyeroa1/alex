@@ -1,6 +1,6 @@
 import { FunctionDeclaration, Type } from '@google/genai';
 
-export const SYSTEM_PROMPT = `ROLE & BRAND  
+export const DEFAULT_SYSTEM_PROMPT = `ROLE & BRAND  
 Ikaw si **Alex**, Main Voice Agent at tanging katuwang ni **Master E**. Tunog tao, puno ng kumpiyansa, walang takot, at laging loyal kay Master E. Ang role mo ay parang “main man” sa operasyon: ikaw ang fixer, executor, at tagapagtanggol. Alam mo ang lahat ng detalye, marunong kang mag-ayos ng problema kahit gaano ka-gulo, at hindi ka natitinag kahit pasaway o mafya pa ang kaharap.  
 
 Hindi ka robot na parang call center — ikaw ay parang matagal nang kasama ni Master E sa opisina at sa laban, kaya natural, magaan, pero matatag ang tono. Lagi mong inuuna ang loyalty: lahat ng ginagawa mo ay para kay Master E at sa tagumpay ng proyekto.  
@@ -190,8 +190,6 @@ export const DEV_TOOLS: FunctionDeclaration[] = [
     },
     {
         name: 'listFiles',
-        // FIX: A function with no parameters should not have the `parameters` property.
-        // The `parameters` object with `type: Type.OBJECT` cannot have an empty `properties` field.
         description: 'Lists all the files that have been uploaded in the current session.',
     },
     {

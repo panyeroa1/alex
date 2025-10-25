@@ -1,11 +1,70 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import type { AgentStatus } from '../types';
 
 interface OrbProps {
     status: AgentStatus;
+    analyserNode: AnalyserNode | null;
 }
 
-const OrbGraphics: React.FC<{ status: AgentStatus }> = ({ status }) => {
+const AudioVisualizer: React.FC<{ analyser: AnalyserNode }> = ({ analyser }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    // FIX: Initialize useRef with null to prevent "Expected 1 arguments, but got 0" error.
+    const animationFrameId = useRef<number | null>(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const canvasCtx = canvas.getContext('2d');
+        if (!canvasCtx) return;
+
+        analyser.fftSize = 128;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        const draw = () => {
+            animationFrameId.current = requestAnimationFrame(draw);
+            analyser.getByteFrequencyData(dataArray);
+
+            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(centerX, centerY) * 0.55;
+            const bars = bufferLength * 0.8; 
+            const barWidth = 2;
+
+            for (let i = 0; i < bars; i++) {
+                const barHeight = Math.pow(dataArray[i] / 255, 2) * 60;
+                const angle = (i / bars) * 2 * Math.PI;
+
+                const startX = centerX + Math.cos(angle) * radius;
+                const startY = centerY + Math.sin(angle) * radius;
+                const endX = centerX + Math.cos(angle) * (radius + barHeight);
+                const endY = centerY + Math.sin(angle) * (radius + barHeight);
+
+                canvasCtx.beginPath();
+                canvasCtx.strokeStyle = `rgba(255, 204, 153, ${0.2 + (barHeight / 60) * 0.8})`;
+                canvasCtx.lineWidth = barWidth;
+                canvasCtx.moveTo(startX, startY);
+                canvasCtx.lineTo(endX, endY);
+                canvasCtx.stroke();
+            }
+        };
+
+        draw();
+
+        return () => {
+            if (animationFrameId.current) {
+                cancelAnimationFrame(animationFrameId.current);
+            }
+        };
+    }, [analyser]);
+
+    return <canvas ref={canvasRef} width="320" height="320" className="absolute inset-0 w-full h-full" />;
+};
+
+
+const OrbGraphics: React.FC<{ status: AgentStatus; analyserNode: AnalyserNode | null; }> = ({ status, analyserNode }) => {
     const isVerifying = status === 'verifying';
     const isConnecting = status === 'connecting';
     const isExecuting = status === 'executing';
@@ -38,6 +97,9 @@ const OrbGraphics: React.FC<{ status: AgentStatus }> = ({ status }) => {
                  }}></div>
             </div>
 
+            {/* Audio Visualizer */}
+            {analyserNode && <AudioVisualizer analyser={analyserNode} />}
+
             {/* Status Text */}
             {isVerifying && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-white z-10">
@@ -49,55 +111,10 @@ const OrbGraphics: React.FC<{ status: AgentStatus }> = ({ status }) => {
     );
 };
 
-export const Orb: React.FC<OrbProps> = ({ status }) => {
+export const Orb: React.FC<OrbProps> = ({ status, analyserNode }) => {
     return (
         <div className="w-full h-full relative">
-            <style>
-                {`
-                @keyframes glow-slow {
-                    0%, 100% { transform: scale(1.1); opacity: 0.3; }
-                    50% { transform: scale(1.25); opacity: 0.5; }
-                }
-                .animate-glow-slow { animation: glow-slow 4s ease-in-out infinite; }
-
-                @keyframes glow-medium {
-                    0%, 100% { transform: scale(1.3); opacity: 0.2; }
-                    50% { transform: scale(1.5); opacity: 0.3; }
-                }
-                .animate-glow-medium { animation: glow-medium 4s ease-in-out infinite; animation-delay: 1s; }
-                
-                @keyframes plasma {
-                    0% { background-position: 0% 50%; }
-                    50% { background-position: 100% 50%; }
-                    100% { background-position: 0% 50%; }
-                }
-                .animate-plasma { animation: plasma 20s ease infinite; }
-
-                @keyframes plasma-idle {
-                    0%   { background-position: 49% 51%; }
-                    25%  { background-position: 51% 51%; }
-                    50%  { background-position: 51% 49%; }
-                    75%  { background-position: 49% 49%; }
-                    100% { background-position: 49% 51%; }
-                }
-                .animate-plasma-idle { animation: plasma-idle 90s linear infinite; }
-
-                @keyframes pulse-slow {
-                    0%, 100% { transform: scale(1); opacity: 0.5; }
-                    50% { transform: scale(1.05); opacity: 0.7; }
-                }
-                .animate-pulse-slow { animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-
-                @keyframes fade-in-out {
-                  0% { opacity: 0; transform: translateY(-10px); }
-                  10% { opacity: 1; transform: translateY(0); }
-                  90% { opacity: 1; transform: translateY(0); }
-                  100% { opacity: 0; transform: translateY(-10px); }
-                }
-                .animate-fade-in-out { animation: fade-in-out 5s ease-in-out forwards; }
-                `}
-            </style>
-            <OrbGraphics status={status} />
+            <OrbGraphics status={status} analyserNode={analyserNode} />
         </div>
     );
 };
