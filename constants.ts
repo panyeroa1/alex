@@ -179,6 +179,30 @@ export const DEV_TOOLS: FunctionDeclaration[] = [
         },
     },
     {
+        name: 'analyzeSong',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Analyzes a song or audio file to extract detailed information like tempo, key, mood, instruments, genre, lyrics themes, and overall composition.',
+            properties: {
+                fileName: { type: Type.STRING, description: 'The name of the uploaded audio file to analyze.' },
+            },
+            required: ['fileName'],
+        },
+    },
+    {
+        name: 'singASong',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Makes Alex sing a song with expressive vocals. Can sing existing lyrics or create new ones based on a theme.',
+            properties: {
+                lyrics: { type: Type.STRING, description: 'The lyrics to sing. If not provided, Alex will improvise based on the theme.' },
+                theme: { type: Type.STRING, description: 'The theme or mood of the song (e.g., "happy birthday", "motivational", "romantic ballad").' },
+                style: { type: Type.STRING, description: 'The singing style (e.g., "pop", "jazz", "rock", "opera", "rap").' },
+            },
+            required: ['theme'],
+        },
+    },
+    {
         name: 'runDeployment',
         parameters: {
             type: Type.OBJECT,
