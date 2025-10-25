@@ -357,6 +357,21 @@ export async function generateConversationSummary(history: ChatMessage[]): Promi
 export async function summarizeConversationsForMemory(conversations: Conversation[]): Promise<string> {
     if (conversations.length === 0) return "";
 
+    // Create a signature of the current conversation data to check for changes.
+    const conversationsSignature = JSON.stringify(
+        conversations.map(c => ({ id: c.id, title: c.title, summary: c.summary, created_at: c.created_at }))
+    );
+
+    const cachedSignature = sessionStorage.getItem('alex_memory_signature');
+    const cachedSummary = sessionStorage.getItem('alex_memory_summary');
+
+    // If the data hasn't changed and a summary is cached, return the cached version.
+    if (cachedSignature === conversationsSignature && cachedSummary) {
+        console.log("Using cached memory summary.");
+        return cachedSummary;
+    }
+
+    console.log("Generating new memory summary to prevent rate-limiting.");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const context = conversations
         .map(c => `Conversation about "${c.title}" (created on ${new Date(c.created_at).toLocaleString()}):\nSummary: ${c.summary || 'No summary available.'}`)
@@ -371,10 +386,24 @@ export async function summarizeConversationsForMemory(conversations: Conversatio
     
     try {
         const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
-        return `\n\n--- LONG-TERM MEMORY CONTEXT ---\nHere is a summary of our recent conversations:\n${response.text}\n--- END OF MEMORY CONTEXT ---`;
+        const newSummary = `\n\n--- LONG-TERM MEMORY CONTEXT ---\nHere is a summary of our recent conversations:\n${response.text}\n--- END OF MEMORY CONTEXT ---`;
+        
+        // Cache the new summary and its signature for future sessions.
+        sessionStorage.setItem('alex_memory_summary', newSummary);
+        sessionStorage.setItem('alex_memory_signature', conversationsSignature);
+
+        return newSummary;
     } catch (error) {
         console.error("Failed to summarize conversations for memory:", error);
-        return "\n\n--- LONG-TERM MEMORY CONTEXT ---\nCould not load recent conversation summaries.\n--- END OF MEMORY CONTEXT ---";
+        
+        // If the API fails, fall back to the cached version if it exists.
+        if (cachedSummary) {
+            console.warn("API for memory summary failed, falling back to stale cached summary.");
+            return cachedSummary;
+        }
+
+        // Otherwise, return a user-friendly fallback context.
+        return "\n\n--- LONG-TERM MEMORY CONTEXT ---\nCould not load recent conversation summaries due to an API error.\n--- END OF MEMORY CONTEXT ---";
     }
 }
 

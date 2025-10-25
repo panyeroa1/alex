@@ -72,70 +72,195 @@ const executePython = async (code: string): Promise<PythonExecutionResult> => {
     }
 };
 
-const BiometricsEnrollment: React.FC<{ onEnrollmentComplete: () => void; }> = ({ onEnrollmentComplete }) => {
-    const [status, setStatus] = useState<'idle' | 'prompting' | 'recording' | 'processing' | 'done'>('idle');
-    const [countdown, setCountdown] = useState(3);
-    // FIX: Initialize useRef with null instead of the undefined variable 'timer'.
-    const timerRef = useRef<number | null>(null);
+const ENROLLMENT_PHRASES = [
+    "Alex, activate all security protocols for Master E.",
+    "My voice is my password; authorize complete access.",
+    "Execute command override sequence Alpha-Gamma-7.",
+];
 
-    const startRecording = () => {
-        setStatus('prompting');
-        timerRef.current = window.setInterval(() => {
-            setCountdown(prev => {
-                if (prev === 1) {
-                    if (timerRef.current) clearInterval(timerRef.current);
-                    setStatus('recording');
-                    setTimeout(() => {
-                        setStatus('processing');
-                        setTimeout(() => {
-                           setStatus('done');
-                           setTimeout(onEnrollmentComplete, 2000);
-                        }, 2500);
-                    }, 5000);
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-    };
+const BiometricsEnrollment: React.FC<{ onEnrollmentComplete: () => void; }> = ({ onEnrollmentComplete }) => {
+    const [status, setStatus] = useState<'idle' | 'prompting' | 'recording' | 'processing' | 'done' | 'error'>('idle');
+    const [currentStep, setCurrentStep] = useState(0);
+    const [errorMsg, setErrorMsg] = useState('');
+    
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const analyserRef = useRef<AnalyserNode | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const animationFrameIdRef = useRef<number | null>(null);
+    const recordingTimeoutRef = useRef<number | null>(null);
+
+    const cleanupAudio = useCallback(() => {
+        if (animationFrameIdRef.current) {
+            cancelAnimationFrame(animationFrameIdRef.current);
+            animationFrameIdRef.current = null;
+        }
+        streamRef.current?.getTracks().forEach(track => track.stop());
+        if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+            audioContextRef.current.close();
+        }
+        streamRef.current = null;
+        audioContextRef.current = null;
+        analyserRef.current = null;
+    }, []);
     
     useEffect(() => {
-        return () => {
-            if (timerRef.current) {
-                clearInterval(timerRef.current);
+        return cleanupAudio;
+    }, [cleanupAudio]);
+
+    const setupAudio = async () => {
+        if (streamRef.current) return true;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            streamRef.current = stream;
+            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            audioContextRef.current = audioContext;
+            analyserRef.current = audioContext.createAnalyser();
+            const source = audioContext.createMediaStreamSource(stream);
+            source.connect(analyserRef.current);
+            return true;
+        } catch (err) {
+            console.error("Error accessing microphone:", err);
+            setErrorMsg("Microphone access is required for enrollment. Please enable it in your browser settings and refresh the page.");
+            setStatus('error');
+            return false;
+        }
+    };
+    
+    const startVisualization = () => {
+        const canvas = canvasRef.current;
+        const analyser = analyserRef.current;
+        if (!canvas || !analyser) return;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        analyser.fftSize = 256;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        const draw = () => {
+            animationFrameIdRef.current = requestAnimationFrame(draw);
+            analyser.getByteFrequencyData(dataArray);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const barWidth = (canvas.width / bufferLength) * 1.5;
+            let barHeight;
+            let x = 0;
+            
+            for(let i = 0; i < bufferLength; i++) {
+                barHeight = dataArray[i] * 1.5;
+                
+                const r = barHeight + (25 * (i/bufferLength));
+                const g = 200 * (i/bufferLength);
+                const b = 50;
+        
+                ctx.fillStyle = `rgba(${r},${g},${b}, 0.8)`;
+                ctx.fillRect(x, canvas.height - barHeight / 2, barWidth, barHeight);
+        
+                x += barWidth + 1;
             }
         };
-    }, []);
+        draw();
+    };
 
+    const handleStartEnrollment = async () => {
+        const audioReady = await setupAudio();
+        if (audioReady) {
+            setStatus('prompting');
+        }
+    };
+
+    const handleStartRecording = () => {
+        setStatus('recording');
+        startVisualization();
+
+        recordingTimeoutRef.current = window.setTimeout(() => {
+            if (animationFrameIdRef.current) {
+                cancelAnimationFrame(animationFrameIdRef.current);
+                animationFrameIdRef.current = null;
+            }
+            setStatus('processing');
+
+            setTimeout(() => {
+                if (currentStep < ENROLLMENT_PHRASES.length - 1) {
+                    setCurrentStep(prev => prev + 1);
+                    setStatus('prompting');
+                } else {
+                    setStatus('done');
+                    cleanupAudio();
+                    setTimeout(onEnrollmentComplete, 2000);
+                }
+            }, 1500);
+
+        }, 4000); // Record for 4 seconds
+    };
+    
     const getStatusContent = () => {
+        const progressIndicator = (
+            <div className="flex justify-center gap-2 mt-4">
+                {ENROLLMENT_PHRASES.map((_, index) => (
+                    <div key={index} className={`w-3 h-3 rounded-full transition-colors ${
+                        index < currentStep ? 'bg-green-500' : 
+                        index === currentStep ? 'bg-blue-500 animate-pulse' : 
+                        'bg-gray-600'
+                    }`}></div>
+                ))}
+            </div>
+        );
+
         switch (status) {
             case 'idle':
                 return (
                     <>
                         <h2 className="text-2xl font-bold mb-2">Voice Biometrics Enrollment</h2>
-                        <p className="text-white/70 mb-6">For your security, Master E, we need to enroll your voiceprint.</p>
-                        <button onClick={startRecording} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full transition-all duration-300 transform hover:scale-105 active:scale-100">
-                            Start Enrollment
+                        <p className="text-white/70 mb-6">For enhanced security, we need to enroll your voiceprint, Master E.</p>
+                        <button onClick={handleStartEnrollment} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full transition-all duration-300 transform hover:scale-105 active:scale-100">
+                            Begin Enrollment
                         </button>
                     </>
                 );
             case 'prompting':
-                return <p className="text-4xl font-bold animate-pulse">Recording in {countdown}...</p>;
+                return (
+                    <>
+                        <p className="text-lg text-white/80 mb-2">Step {currentStep + 1} of {ENROLLMENT_PHRASES.length}</p>
+                        <p className="text-2xl font-medium">Please say the following phrase clearly:</p>
+                        <p className="text-3xl font-bold my-6 p-4 bg-white/5 rounded-lg border border-white/10">"{ENROLLMENT_PHRASES[currentStep]}"</p>
+                        <button onClick={handleStartRecording} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-full transition-all duration-300 transform hover:scale-105 active:scale-100">
+                            Record Phrase
+                        </button>
+                        {progressIndicator}
+                    </>
+                );
             case 'recording':
                 return (
                     <>
                         <p className="text-2xl font-bold text-red-500 mb-4 animate-pulse">RECORDING</p>
-                        <p className="text-lg text-white/80">Please say:</p>
-                        <p className="text-xl font-medium mt-2">"Alex, you have access to all my systems."</p>
-                        <div className="w-full bg-gray-700 rounded-full h-2.5 mt-6 overflow-hidden">
-                           <div className="bg-red-600 h-2.5 rounded-full animate-progress"></div>
+                        <p className="text-xl font-medium mt-2">"{ENROLLMENT_PHRASES[currentStep]}"</p>
+                        <canvas ref={canvasRef} width="300" height="100" className="my-4"></canvas>
+                        <div className="w-full bg-gray-700 rounded-full h-2.5 mt-2 overflow-hidden">
+                           <div className="bg-red-600 h-2.5 rounded-full animate-progress" style={{animationDuration: '4s'}}></div>
                         </div>
+                        {progressIndicator}
                     </>
                 );
             case 'processing':
-                 return <p className="text-2xl font-bold animate-pulse">Processing Voiceprint...</p>;
+                 return (
+                    <>
+                        <p className="text-2xl font-bold animate-pulse">Processing Voiceprint...</p>
+                        {progressIndicator}
+                    </>
+                 );
             case 'done':
                 return <p className="text-2xl font-bold text-green-400">Enrollment Complete. Welcome, Master E.</p>;
+            case 'error':
+                 return (
+                    <>
+                        <h2 className="text-2xl font-bold text-red-400 mb-4">Enrollment Failed</h2>
+                        <p className="text-white/80 max-w-md">{errorMsg}</p>
+                    </>
+                 );
         }
     };
     
