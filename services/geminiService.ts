@@ -359,7 +359,7 @@ export async function summarizeConversationsForMemory(conversations: Conversatio
 
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const context = conversations
-        .map(c => `Conversation about "${c.title}" (last accessed ${new Date(c.last_accessed_at).toLocaleString()}):\nSummary: ${c.summary || 'No summary available.'}`)
+        .map(c => `Conversation about "${c.title}" (created on ${new Date(c.created_at).toLocaleString()}):\nSummary: ${c.summary || 'No summary available.'}`)
         .join('\n\n---\n\n');
 
     const prompt = `You are Alex, an AI agent, preparing for a new session with your boss, Master E. Below is a summary of your last few conversations. Review it to refresh your memory on recent projects and discussions. Synthesize these points into a brief, consolidated paragraph of your key takeaways. This is for your internal context only; do not mention this memory recall process to the user unless they ask.

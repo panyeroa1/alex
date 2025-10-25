@@ -28,7 +28,6 @@ export interface Conversation {
     title: string;
     history: ChatMessage[];
     created_at: string; // Supabase timestamp with timezone
-    last_accessed_at: string;
     summary: string | null;
     // FIX: Changed user_id to be required, as it's likely a non-nullable foreign key.
     // The optional '?' was causing type conflicts with the explicit Insert/Update types in Supabase.

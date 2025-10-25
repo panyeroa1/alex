@@ -29,7 +29,6 @@ export type Database = {
           user_id: string;
           recording_url?: string | null;
           summary?: string | null;
-          last_accessed_at?: string;
         };
         Update: {
           title?: string;
@@ -37,7 +36,6 @@ export type Database = {
           history?: Json;
           recording_url?: string | null;
           summary?: string | null;
-          last_accessed_at?: string;
         };
       };
     };

@@ -16,10 +16,10 @@ export const getConversations = async (): Promise<Conversation[]> => {
     const { data, error } = await supabase
         .from('conversations')
         .select('*')
-        .order('last_accessed_at', { ascending: false });
+        .order('created_at', { ascending: false });
 
     if (error) {
-        console.error("Error fetching conversations:", error);
+        console.error("Error fetching conversations:", error.message);
         return [];
     }
     return data || [];
@@ -33,7 +33,7 @@ export const getConversation = async (id: string): Promise<Conversation | null> 
         .single();
     
     if (error) {
-        console.error(`Error fetching conversation ${id}:`, error);
+        console.error(`Error fetching conversation ${id}:`, error.message);
         return null;
     }
     return data;
@@ -49,9 +49,8 @@ export const createConversation = async (): Promise<Conversation> => {
 
     const newConversation = {
         title: 'New Conversation',
-        history: [],
+        history: [] as any, // FIX: Cast to `any` to bypass Supabase client type inference issues with jsonb.
         user_id: user.id,
-        last_accessed_at: new Date().toISOString(),
     };
 
     const { data, error } = await supabase
@@ -61,8 +60,7 @@ export const createConversation = async (): Promise<Conversation> => {
         .single();
     
     if (error || !data) {
-        console.error("Error creating conversation:", error);
-        // Fallback or throw error
+        console.error("Error creating conversation:", error?.message);
         throw new Error("Could not create a new conversation.");
     }
     return data;
@@ -71,33 +69,33 @@ export const createConversation = async (): Promise<Conversation> => {
 export const saveConversationHistory = async (id: string, history: ChatMessage[]): Promise<void> => {
     const { error } = await supabase
         .from('conversations')
-        .update({ history, last_accessed_at: new Date().toISOString() })
+        .update({ history: history as any }) // FIX: Cast to `any` to bypass Supabase client type inference issues with jsonb.
         .eq('id', id);
 
     if (error) {
-        console.error("Error saving history:", error);
+        console.error("Error saving history:", error.message);
     }
 };
 
 export const updateConversationTitle = async (id: string, title: string): Promise<void> => {
     const { error } = await supabase
         .from('conversations')
-        .update({ title, last_accessed_at: new Date().toISOString() })
+        .update({ title })
         .eq('id', id);
         
     if (error) {
-        console.error("Error updating title:", error);
+        console.error("Error updating title:", error.message);
     }
 };
 
 export const updateConversationSummary = async (id: string, summary: string): Promise<void> => {
     const { error } = await supabase
         .from('conversations')
-        .update({ summary, last_accessed_at: new Date().toISOString() })
+        .update({ summary })
         .eq('id', id);
 
     if (error) {
-        console.error("Error updating summary:", error);
+        console.error("Error updating summary:", error.message);
     }
 };
 
@@ -116,7 +114,7 @@ export const uploadRecording = async (conversationId: string, audioBlob: Blob): 
         });
 
     if (error) {
-        console.error("Error uploading recording:", error);
+        console.error("Error uploading recording:", error.message);
         return;
     }
 
@@ -125,11 +123,11 @@ export const uploadRecording = async (conversationId: string, audioBlob: Blob): 
     if (publicUrl) {
         const { error: updateError } = await supabase
             .from('conversations')
-            .update({ recording_url: publicUrl, last_accessed_at: new Date().toISOString() })
+            .update({ recording_url: publicUrl })
             .eq('id', conversationId);
         
         if (updateError) {
-            console.error("Error updating conversation with recording URL:", updateError);
+            console.error("Error updating conversation with recording URL:", updateError.message);
         }
     }
 };
@@ -147,7 +145,7 @@ export const uploadMediaFile = async (file: File): Promise<MediaItem | null> => 
         .upload(filePath, file, { upsert: true });
 
     if (uploadError) {
-        console.error('Error uploading media file:', uploadError);
+        console.error('Error uploading media file:', uploadError.message);
         return null;
     }
 
@@ -181,7 +179,7 @@ export const listMediaFiles = async (): Promise<MediaItem[]> => {
         .list(user.id, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
     
     if (error) {
-        console.error('Error listing media files:', error);
+        console.error('Error listing media files:', error.message);
         return [];
     }
 
@@ -212,6 +210,6 @@ export const deleteMediaFile = async (fileName: string): Promise<void> => {
         .remove([`${user.id}/${fileName}`]);
 
     if (error) {
-        console.error('Error deleting media file:', error);
+        console.error('Error deleting media file:', error.message);
     }
 };
