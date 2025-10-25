@@ -47,6 +47,11 @@ export interface IntegrationCredentials {
     storyAuth?: {
         enabled: boolean;
         key: string | null;
+    };
+    mux?: {
+        enabled: boolean;
+        tokenId: string | null;
+        tokenSecret: string | null;
     }
 }
 

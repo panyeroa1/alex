@@ -224,6 +224,21 @@ export const DEV_TOOLS: FunctionDeclaration[] = [
         description: 'Lists all the music tracks currently in the media library playlist.',
     },
     {
+        name: 'listVideos',
+        description: 'Lists all the videos currently in the media library.',
+    },
+    {
+        name: 'playVideo',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Plays a video from the media library in the video player.',
+            properties: {
+                videoName: { type: Type.STRING, description: 'The name of the video to play from the library.' },
+            },
+            required: ['videoName'],
+        },
+    },
+    {
         name: 'searchYouTubeAndAddToPlaylist',
         parameters: {
             type: Type.OBJECT,

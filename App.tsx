@@ -12,6 +12,7 @@ import { Settings } from './components/Settings';
 import { MusicPlayer } from './components/MusicPlayer';
 import { MusicStudio } from './components/MusicStudio';
 import { DevConsole } from './components/DevConsole';
+import { VideoLibrary } from './components/VideoLibrary';
 
 // --- Python Execution Service (using Pyodide) ---
 declare global {
@@ -371,11 +372,13 @@ const App: React.FC = () => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isMusicStudioOpen, setIsMusicStudioOpen] = useState(false);
     const [isDevConsoleOpen, setIsDevConsoleOpen] = useState(false);
+    const [isVideoLibraryOpen, setIsVideoLibraryOpen] = useState(false);
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
     const [systemPrompt, setSystemPrompt] = useState<string>(DEFAULT_SYSTEM_PROMPT);
     const [integrations, setIntegrations] = useState<IntegrationCredentials>({
-        storyAuth: { enabled: false, key: null }
+        storyAuth: { enabled: false, key: null },
+        mux: { enabled: false, tokenId: null, tokenSecret: null },
     });
     const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
     const [mediaLibrary, setMediaLibrary] = useState<MediaItem[]>([]);
@@ -394,6 +397,9 @@ const App: React.FC = () => {
     const [currentTrack, setCurrentTrack] = useState<MediaItem | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [trackProgress, setTrackProgress] = useState({ currentTime: 0, duration: 0 });
+
+    // Video Library State
+    const [videoToPlay, setVideoToPlay] = useState<MediaItem | null>(null);
     
     const sessionRef = useRef<LiveSession | null>(null);
     const chatRef = useRef<Chat | null>(null);
@@ -1023,6 +1029,28 @@ const App: React.FC = () => {
                     }
                     break;
                  }
+                case 'listVideos': {
+                    const videos = mediaLibrary.filter(item => item.type === 'video');
+                    if (videos.length === 0) {
+                        result = "The video library is empty, Boss.";
+                    } else {
+                        const videoList = videos.map((v, i) => `${i + 1}. ${v.name}`).join('\n');
+                        result = `Here are the videos in the library:\n${videoList}`;
+                    }
+                    break;
+                }
+                case 'playVideo': {
+                    const videoName = fc.args.videoName as string;
+                    const videoToPlay = mediaLibrary.find(item => item.type === 'video' && item.name.toLowerCase().includes(videoName.toLowerCase()));
+                    if (videoToPlay) {
+                        setIsVideoLibraryOpen(true);
+                        setVideoToPlay(videoToPlay);
+                        result = `Sige Boss, playing "${videoToPlay.name}".`;
+                    } else {
+                        result = `Sorry Boss, I couldn't find a video named "${videoName}".`;
+                    }
+                    break;
+                }
                 case 'listFiles':
                     result = uploadedFiles.length > 0 ? `Current files: ${uploadedFiles.map(f => f.name).join(', ')}` : "No files have been uploaded yet.";
                     break;
@@ -1451,6 +1479,16 @@ const App: React.FC = () => {
         addNotification(`Story Auth settings updated.`);
     };
 
+    const handleSaveMux = (muxConfig: { enabled: boolean; tokenId: string | null; tokenSecret: string | null; }) => {
+        const newIntegrations = { 
+            ...integrations, 
+            mux: muxConfig
+        };
+        setIntegrations(newIntegrations);
+        localStorage.setItem('alex_integrations', JSON.stringify(newIntegrations));
+        addNotification(`Mux settings updated.`);
+    };
+
     const runCliAgentAnalysis = useCallback(async (newFiles: ProjectFile[]) => {
         if (newFiles.length === 0) return;
 
@@ -1715,6 +1753,7 @@ const App: React.FC = () => {
                     integrations={integrations}
                     onSaveIntegration={handleSaveIntegration}
                     onSaveStoryAuth={handleSaveStoryAuth}
+                    onSaveMux={handleSaveMux}
                     mediaLibrary={mediaLibrary}
                     onSaveMediaLibrary={handleSaveMediaLibrary}
                     onMediaFileUpload={handleMediaFileUpload}
@@ -1740,6 +1779,15 @@ const App: React.FC = () => {
                     generateLyrics={generateLyrics}
                     analyzeAudioTone={analyzeAudioTone}
                     synthesizeSpeech={synthesizeSpeech}
+                />
+            )}
+            {isVideoLibraryOpen && (
+                <VideoLibrary
+                    isOpen={isVideoLibraryOpen}
+                    onClose={() => setIsVideoLibraryOpen(false)}
+                    videos={mediaLibrary.filter(item => item.type === 'video')}
+                    videoToPlay={videoToPlay}
+                    onPlaybackEnd={() => setVideoToPlay(null)}
                 />
             )}
             
@@ -1780,7 +1828,7 @@ const App: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-2">
                          <button onClick={() => setIsDevConsoleOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Open Developer Console">
-                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
                         </button>
                         <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Open Settings">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
@@ -1812,6 +1860,9 @@ const App: React.FC = () => {
                         </button>
                          <button onClick={() => setIsMusicStudioOpen(true)} className="p-3 rounded-full hover:bg-white/10 transition-colors" aria-label="Open Music Studio">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                        </button>
+                         <button onClick={() => setIsVideoLibraryOpen(true)} className="p-3 rounded-full hover:bg-white/10 transition-colors" aria-label="Open Video Library">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>
                         </button>
                         <button onClick={handleToggleRecording} className={`p-3 rounded-full transition-colors ${isRecording ? 'bg-red-500 animate-pulse-record' : 'hover:bg-white/10'}`} aria-label={isRecording ? "Stop Recording" : "Start Recording Idea"}>
                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>

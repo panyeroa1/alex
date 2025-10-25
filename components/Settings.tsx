@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { IntegrationCredentials, MediaItem, ProjectFile } from '../types';
 import { IntegrationModal } from './IntegrationModal';
@@ -10,6 +11,7 @@ interface SettingsProps {
     integrations: IntegrationCredentials;
     onSaveIntegration: (name: string, creds: any) => void;
     onSaveStoryAuth: (config: { enabled: boolean; key: string | null; }) => void;
+    onSaveMux: (config: { enabled: boolean; tokenId: string | null; tokenSecret: string | null; }) => void;
     mediaLibrary: MediaItem[];
     onSaveMediaLibrary: (library: MediaItem[]) => void;
     onMediaFileUpload: (file: File) => Promise<void>;
@@ -41,6 +43,7 @@ export const Settings: React.FC<SettingsProps> = ({
     integrations,
     onSaveIntegration,
     onSaveStoryAuth,
+    onSaveMux,
     mediaLibrary,
     onSaveMediaLibrary,
     onMediaFileUpload,
@@ -119,6 +122,17 @@ export const Settings: React.FC<SettingsProps> = ({
     const handleStoryAuthToggle = () => {
         const currentConfig = integrations.storyAuth || { enabled: false, key: null };
         onSaveStoryAuth({ ...currentConfig, enabled: !currentConfig.enabled });
+    };
+
+    const handleMuxToggle = () => {
+        const currentConfig = integrations.mux || { enabled: false, tokenId: null, tokenSecret: null };
+        onSaveMux({ ...currentConfig, enabled: !currentConfig.enabled });
+    };
+
+    const handleMuxCredChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        const currentConfig = integrations.mux || { enabled: false, tokenId: null, tokenSecret: null };
+        onSaveMux({ ...currentConfig, [name]: value });
     };
 
     const handleProjectFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -220,9 +234,56 @@ export const Settings: React.FC<SettingsProps> = ({
                                 </div>
                             )}
                         </div>
+                        <div className="mt-6 pt-6 border-t border-white/10">
+                            <h4 className="text-lg font-semibold text-white/80 mb-2">Mux Video Hosting</h4>
+                            <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg border border-white/10">
+                                <div>
+                                    <p className="font-medium">Enable Mux Integration</p>
+                                    <p className="text-sm text-white/50">Use Mux for video processing and streaming.</p>
+                                </div>
+                                <button
+                                    onClick={handleMuxToggle}
+                                    className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 ${integrations.mux?.enabled ? 'bg-blue-600' : 'bg-gray-600'}`}
+                                    aria-pressed={integrations.mux?.enabled}
+                                >
+                                    <span className={`inline-block w-4 h-4 transform bg-white rounded-full transition-transform ${integrations.mux?.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                                </button>
+                            </div>
+                             {integrations.mux?.enabled && (
+                                <div className="mt-4 space-y-4 animate-fade-in">
+                                    <div>
+                                        <label htmlFor="muxTokenId" className="block text-sm font-medium text-white/70 mb-1">Mux Token ID</label>
+                                        <input 
+                                            type="text" 
+                                            id="muxTokenId"
+                                            name="tokenId"
+                                            value={integrations.mux?.tokenId || ''} 
+                                            onChange={handleMuxCredChange}
+                                            className="w-full bg-black/30 text-white/90 p-2 rounded-md border border-white/20 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                        />
+                                    </div>
+                                     <div>
+                                        <label htmlFor="muxTokenSecret" className="block text-sm font-medium text-white/70 mb-1">Mux Token Secret</label>
+                                        <input 
+                                            type="password" 
+                                            id="muxTokenSecret"
+                                            name="tokenSecret" 
+                                            value={integrations.mux?.tokenSecret || ''} 
+                                            onChange={handleMuxCredChange}
+                                            className="w-full bg-black/30 text-white/90 p-2 rounded-md border border-white/20 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                                        />
+                                        <p className="text-xs text-amber-400 mt-2">
+                                            <strong>Warning:</strong> Storing secrets on the client-side is highly insecure. This is for local development simulation only. Do not use production keys.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 );
             case 'library':
+                 const audioItems = mediaLibrary.filter(item => item.type === 'audio');
+                 const videoItems = mediaLibrary.filter(item => item.type === 'video');
                  return (
                     <div className="space-y-6">
                         <div>
@@ -252,21 +313,42 @@ export const Settings: React.FC<SettingsProps> = ({
                                 <span>{isUploading ? 'Uploading...' : 'Upload from Device'}</span>
                             </button>
                         </div>
-                        <div className="space-y-2">
-                           {mediaLibrary.length === 0 && <p className="text-center text-white/50 text-sm">Your library is empty.</p>}
-                           {mediaLibrary.map(item => (
-                               <div key={item.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg text-sm">
-                                   <div className='truncate mr-4 flex items-center gap-3'>
-                                       <span className="font-semibold">{item.name}</span>
-                                       <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                            item.source === 'youtube' ? 'bg-red-500/20 text-red-300' 
-                                            : item.source === 'upload' ? 'bg-green-500/20 text-green-300'
-                                            : 'bg-gray-500/20 text-gray-300'}`
-                                        }>{item.source || 'url'}</span>
+
+                        <div className="space-y-4">
+                            <h4 className="text-md font-semibold text-white/80">Audio Tracks</h4>
+                            {audioItems.length === 0 ? <p className="text-center text-white/50 text-sm">No audio tracks in library.</p> :
+                                audioItems.map(item => (
+                                   <div key={item.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg text-sm">
+                                       <div className='truncate mr-4 flex items-center gap-3'>
+                                           <span className="font-semibold">{item.name}</span>
+                                           <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                                item.source === 'youtube' ? 'bg-red-500/20 text-red-300' 
+                                                : item.source === 'upload' ? 'bg-green-500/20 text-green-300'
+                                                : 'bg-gray-500/20 text-gray-300'}`
+                                            }>{item.source || 'url'}</span>
+                                       </div>
+                                       <button onClick={() => handleRemoveMediaItem(item.id)} className="text-red-400 hover:text-red-300 p-1 rounded-full hover:bg-white/10 text-xs flex-shrink-0">Remove</button>
                                    </div>
-                                   <button onClick={() => handleRemoveMediaItem(item.id)} className="text-red-400 hover:text-red-300 p-1 rounded-full hover:bg-white/10 text-xs flex-shrink-0">Remove</button>
-                               </div>
-                           ))}
+                               ))
+                            }
+                        </div>
+                        <div className="space-y-4 pt-4 border-t border-white/10">
+                            <h4 className="text-md font-semibold text-white/80">Video Files</h4>
+                            {videoItems.length === 0 ? <p className="text-center text-white/50 text-sm">No video files in library.</p> :
+                                videoItems.map(item => (
+                                   <div key={item.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg text-sm">
+                                       <div className='truncate mr-4 flex items-center gap-3'>
+                                           <span className="font-semibold">{item.name}</span>
+                                           <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                                item.source === 'youtube' ? 'bg-red-500/20 text-red-300' 
+                                                : item.source === 'upload' ? 'bg-green-500/20 text-green-300'
+                                                : 'bg-gray-500/20 text-gray-300'}`
+                                            }>{item.source || 'url'}</span>
+                                       </div>
+                                       <button onClick={() => handleRemoveMediaItem(item.id)} className="text-red-400 hover:text-red-300 p-1 rounded-full hover:bg-white/10 text-xs flex-shrink-0">Remove</button>
+                                   </div>
+                               ))
+                            }
                         </div>
                     </div>
                 );
