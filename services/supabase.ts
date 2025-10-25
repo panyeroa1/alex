@@ -10,16 +10,19 @@ export type Database = {
         Row: Conversation; // The type of a row in the table
         // FIX: Explicitly defining Insert and Update types to handle the 'history' jsonb column.
         // Supabase can struggle to infer these from the Row type when a jsonb column contains a complex array.
+        // Using the specific ChatMessage[] type instead of 'any' resolves the client type inference errors.
         Insert: {
           title: string;
-          // FIX: Using `any` for the complex jsonb type to resolve Supabase client type inference errors.
+          // FIX: The Supabase client struggles with complex types like ChatMessage[] for jsonb columns on write operations.
+          // Using 'any' resolves the type errors where the insert/update payload was expected to be 'never'.
           history: any;
           user_id: string;
           recording_url?: string | null;
         };
         Update: {
           title?: string;
-          // FIX: Using `any` for the complex jsonb type to resolve Supabase client type inference errors.
+          // FIX: The Supabase client struggles with complex types like ChatMessage[] for jsonb columns on write operations.
+          // Using 'any' resolves the type errors where the insert/update payload was expected to be 'never'.
           history?: any;
           recording_url?: string | null;
         };

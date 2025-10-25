@@ -359,6 +359,24 @@ export const DEV_TOOLS: FunctionDeclaration[] = [
         },
     },
     {
+        name: 'invokeCodingAgent',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Invokes a specialized coding agent to perform a task on an uploaded project file.',
+            properties: {
+                task: {
+                    type: Type.STRING,
+                    description: 'A detailed description of the coding task to perform (e.g., "refactor this function to be more efficient").',
+                },
+                fileName: {
+                    type: Type.STRING,
+                    description: 'The name of the project file to perform the task on.',
+                },
+            },
+            required: ['task', 'fileName'],
+        },
+    },
+    {
         name: 'readEmails',
         parameters: {
             type: Type.OBJECT,

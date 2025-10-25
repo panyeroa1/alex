@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, FunctionCall, Chat } from '@google/genai';
-import { Orb, MiniOrb } from './components/Orb';
-import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, BackgroundTask, IntegrationCredentials, MediaItem } from './types';
+import { Luto, MiniLuto } from './components/Orb';
+import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, BackgroundTask, IntegrationCredentials, MediaItem, ProjectFile } from './types';
 import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData } from './services/geminiService';
 import * as db from './services/supabaseService';
 import { DEFAULT_SYSTEM_PROMPT, DEV_TOOLS } from './constants';
@@ -179,7 +179,7 @@ const ChatView: React.FC<{
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                     </button>
                     <h1 className="text-xl font-bold">Alex</h1>
-                    <MiniOrb status={agentStatus} />
+                    <MiniLuto status={agentStatus} />
                 </div>
                 <button onClick={onSwitchToVoice} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Switch to Voice Mode">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
@@ -239,9 +239,12 @@ const App: React.FC = () => {
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
     const [systemPrompt, setSystemPrompt] = useState<string>(DEFAULT_SYSTEM_PROMPT);
-    const [integrations, setIntegrations] = useState<IntegrationCredentials>({});
+    const [integrations, setIntegrations] = useState<IntegrationCredentials>({
+        storyAuth: { enabled: false, key: null }
+    });
     const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
     const [mediaLibrary, setMediaLibrary] = useState<MediaItem[]>([]);
+    const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
     const [isPyodideReady, setIsPyodideReady] = useState(false);
     
     const sessionRef = useRef<LiveSession | null>(null);
@@ -287,10 +290,16 @@ const App: React.FC = () => {
         if (savedPrompt) setSystemPrompt(savedPrompt);
 
         const savedIntegrations = localStorage.getItem('alex_integrations');
-        if (savedIntegrations) setIntegrations(JSON.parse(savedIntegrations));
+        if (savedIntegrations) {
+            const parsed = JSON.parse(savedIntegrations);
+            setIntegrations(prev => ({ ...prev, ...parsed }));
+        }
         
         const savedLibrary = localStorage.getItem('alex_media_library');
         if (savedLibrary) setMediaLibrary(JSON.parse(savedLibrary));
+
+        const savedProjectFiles = localStorage.getItem('alex_project_files');
+        if(savedProjectFiles) setProjectFiles(JSON.parse(savedProjectFiles));
 
         const initializeApp = async () => {
             try {
@@ -479,6 +488,22 @@ const App: React.FC = () => {
                     }, 2000);
                     break;
                 }
+                case 'invokeCodingAgent': {
+                    const task = fc.args.task as string;
+                    const fileName = fc.args.fileName as string;
+                    const file = projectFiles.find(f => f.name === fileName);
+                    
+                    if (!file) {
+                        result = `Error: Project file '${fileName}' not found, Boss. Paki-upload muna sa settings.`;
+                    } else {
+                        updateBackgroundTask(taskId, `Coding agent analyzing '${fileName}'...`);
+                        await new Promise(resolve => setTimeout(resolve, 2500));
+                        updateBackgroundTask(taskId, `Agent working on: ${task}`);
+                        await new Promise(resolve => setTimeout(resolve, 4000));
+                        result = `Sige Boss, the coding agent has completed the task on '${fileName}'. Ready for review.`;
+                    }
+                    break;
+                }
                 case 'generateImage':
                     result = `Sige Boss, generating image based on: "${fc.args.prompt}". It will be ready in a moment.`;
                     addNotification('Simulating image generation...', 'info');
@@ -578,7 +603,7 @@ const App: React.FC = () => {
              setAgentStatus('listening');
         }
         return result;
-    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady]);
+    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles]);
 
     const endSession = useCallback(async () => {
         if (isRecording) {
@@ -772,9 +797,25 @@ const App: React.FC = () => {
         addNotification(`${name} integration updated.`, 'success');
     };
 
+    const handleSaveStoryAuth = (authConfig: { enabled: boolean; key: string | null; }) => {
+        const newIntegrations = { 
+            ...integrations, 
+            storyAuth: authConfig
+        };
+        setIntegrations(newIntegrations);
+        localStorage.setItem('alex_integrations', JSON.stringify(newIntegrations));
+        addNotification('Story Auth settings updated.', 'success');
+    };
+
     const handleSaveMediaLibrary = (library: MediaItem[]) => {
         setMediaLibrary(library);
         localStorage.setItem('alex_media_library', JSON.stringify(library));
+    };
+
+    const handleSaveProjectFiles = (files: ProjectFile[]) => {
+        setProjectFiles(files);
+        localStorage.setItem('alex_project_files', JSON.stringify(files));
+        addNotification(`${files.length} project file(s) saved.`, 'success');
     };
     
     const toggleSession = useCallback(() => { agentStatus !== 'idle' ? endSession() : startSession(); }, [endSession, startSession, agentStatus]);
@@ -822,8 +863,11 @@ const App: React.FC = () => {
                     onSaveSystemPrompt={handleSaveSystemPrompt}
                     integrations={integrations}
                     onSaveIntegration={handleSaveIntegration}
+                    onSaveStoryAuth={handleSaveStoryAuth}
                     mediaLibrary={mediaLibrary}
                     onSaveMediaLibrary={handleSaveMediaLibrary}
+                    projectFiles={projectFiles}
+                    onSaveProjectFiles={handleSaveProjectFiles}
                 />
             )}
             
@@ -878,7 +922,7 @@ const App: React.FC = () => {
                 <main className="absolute inset-0 flex items-center justify-center">
                     <div className="w-64 h-64 md:w-80 md:h-80 z-10">
                         <button onClick={toggleSession} disabled={agentStatus === 'connecting' || agentStatus === 'verifying'} className="w-full h-full rounded-full transition-transform duration-300 ease-in-out hover:scale-105 focus:outline-none relative disabled:opacity-50 disabled:scale-100 group" aria-label={sessionRef.current ? 'Interaction in progress' : 'Start Session'}>
-                            <Orb status={agentStatus} analyserNode={currentAnalyser} />
+                            <Luto status={agentStatus} analyserNode={currentAnalyser} />
                         </button>
                     </div>
                     {showCc && (

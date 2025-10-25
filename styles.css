@@ -63,52 +63,6 @@ $shadows-big:    multiple-box-shadow(100);
 }
 
 /* --- UI Animations --- */
-@keyframes glow-slow {
-    0%, 100% { transform: scale(1.1); opacity: 0.3; }
-    50% { transform: scale(1.25); opacity: 0.5; }
-}
-.animate-glow-slow { animation: glow-slow 4s ease-in-out infinite; }
-
-@keyframes glow-medium {
-    0%, 100% { transform: scale(1.3); opacity: 0.2; }
-    50% { transform: scale(1.5); opacity: 0.3; }
-}
-.animate-glow-medium { animation: glow-medium 4s ease-in-out infinite; animation-delay: 1s; }
-
-/* Orb Plasma Effect */
-@keyframes plasma {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-.animate-plasma-slow {
-    background-size: 400% 400%;
-    animation: plasma 20s ease infinite;
-}
-.animate-plasma-medium {
-    background-size: 400% 400%;
-    animation: plasma 10s ease infinite;
-}
-.animate-plasma-fast {
-    background-size: 400% 400%;
-    animation: plasma 5s ease infinite;
-}
-
-/* Orb Scanner Effect */
-@keyframes scanner {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-.animate-scanner {
-    position: absolute;
-    inset: 0;
-    border-radius: 9999px;
-    background: conic-gradient(from 0deg, transparent 0%, transparent 75%, #ffcc99 90%, white 95%, #ffcc99 100%);
-    animation: scanner 2s linear infinite;
-    mix-blend-mode: screen;
-    opacity: 0.7;
-}
-
 @keyframes pulse-slow {
     0%, 100% { transform: scale(1); opacity: 0.5; }
     50% { transform: scale(1.05); opacity: 0.7; }
@@ -167,6 +121,21 @@ $shadows-big:    multiple-box-shadow(100);
 }
 .animate-pulse-mini { animation: pulse-mini 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 .animate-pulse-mini-fast { animation: pulse-mini 1s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+/* Luto Character Animations */
+@keyframes luto-float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+}
+.animate-luto-float { animation: luto-float 6s ease-in-out infinite; }
+
+@keyframes luto-speak {
+    0%, 100% { transform: scaleY(1); }
+    20% { transform: scaleY(0.2); }
+    50% { transform: scaleY(0.8); }
+    80% { transform: scaleY(0.3); }
+}
+.animate-luto-speak { animation: luto-speak 0.5s ease-in-out infinite; }
 
 
 /* --- Custom Scrollbar --- */

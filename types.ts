@@ -18,6 +18,10 @@ export interface UploadedFile {
     size: number;
 }
 
+export interface ProjectFile extends UploadedFile {
+    content: string; // Base64 encoded content
+}
+
 export interface Conversation {
     id: string; // Will be a UUID from Supabase
     title: string;
@@ -34,6 +38,10 @@ export interface BackgroundTask {
 
 export interface IntegrationCredentials {
     [key: string]: any;
+    storyAuth?: {
+        enabled: boolean;
+        key: string | null;
+    }
 }
 
 export interface MediaItem {
