@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, FunctionCall, Chat } from '@google/genai';
 import { Orb } from './components/Orb';
-import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, BackgroundTask, IntegrationCredentials } from './types';
+import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, BackgroundTask, IntegrationCredentials, MediaItem } from './types';
 import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData } from './services/geminiService';
 import * as db from './services/supabaseService';
 import { DEFAULT_SYSTEM_PROMPT, DEV_TOOLS } from './constants';
@@ -116,12 +116,12 @@ const ChatView: React.FC<{
             <header className="flex items-center justify-between pb-4 border-b border-white/10">
                 <div className="flex items-center gap-2">
                     <button onClick={onOpenSidebar} className="p-2 rounded-full hover:bg-white/10 transition-transform active:scale-95" aria-label="Open Conversation History">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                     </button>
                     <h1 className="text-xl font-bold">Alex</h1>
                 </div>
                 <button onClick={onSwitchToVoice} className="p-2 rounded-full hover:bg-white/10 transition-transform active:scale-95" aria-label="Switch to Voice Mode">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
                 </button>
             </header>
             <main className="flex-1 overflow-y-auto py-4 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent">
@@ -142,7 +142,7 @@ const ChatView: React.FC<{
             <footer className="flex items-center gap-2 pt-4 border-t border-white/10">
                  <input type="file" ref={fileInputRef} onChange={handleFileChange} multiple className="hidden" accept="*/*" />
                  <button onClick={() => fileInputRef.current?.click()} className="p-3 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Attach File">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.59a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.59a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
                 </button>
                 <input
                     type="text"
@@ -153,7 +153,7 @@ const ChatView: React.FC<{
                     className="flex-1 bg-white/10 rounded-full px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <button onClick={handleSend} className="p-3 rounded-full bg-blue-600 hover:bg-blue-700 transition-colors active:scale-95" aria-label="Send Message">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                 </button>
             </footer>
         </div>
@@ -180,6 +180,7 @@ const App: React.FC = () => {
     const [systemPrompt, setSystemPrompt] = useState<string>(DEFAULT_SYSTEM_PROMPT);
     const [integrations, setIntegrations] = useState<IntegrationCredentials>({});
     const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
+    const [mediaLibrary, setMediaLibrary] = useState<MediaItem[]>([]);
     
     const sessionRef = useRef<LiveSession | null>(null);
     const chatRef = useRef<Chat | null>(null);
@@ -190,6 +191,7 @@ const App: React.FC = () => {
     const recordedChunksRef = useRef<Blob[]>([]);
     const audioContextRef = useRef<{ outputCtx: AudioContext, outputGain: GainNode, destinationNode: MediaStreamAudioDestinationNode | null } | null>(null);
     const analyserRef = useRef<{ input: AnalyserNode | null, output: AnalyserNode | null }>({ input: null, output: null });
+    const audioPlayerRef = useRef<HTMLAudioElement>(null);
     
     const toggleOutputMuteRef = useRef<((mute: boolean) => void) | null>(null);
     const isSavingRef = useRef(false);
@@ -224,6 +226,9 @@ const App: React.FC = () => {
 
         const savedIntegrations = localStorage.getItem('alex_integrations');
         if (savedIntegrations) setIntegrations(JSON.parse(savedIntegrations));
+        
+        const savedLibrary = localStorage.getItem('alex_media_library');
+        if (savedLibrary) setMediaLibrary(JSON.parse(savedLibrary));
 
         const initializeApp = async () => {
             try {
@@ -295,7 +300,7 @@ const App: React.FC = () => {
         setTranscript(prev => {
             let newHistory;
             const lastMessage = prev[prev.length - 1];
-            if (lastMessage && lastMessage.speaker === speaker) {
+            if (lastMessage && lastMessage.speaker === speaker && !lastMessage.text.endsWith(' ')) {
                 newHistory = [...prev.slice(0, -1), { ...lastMessage, text: lastMessage.text + text }];
             } else {
                 newHistory = [...prev, { id: Date.now(), speaker, text }];
@@ -373,6 +378,41 @@ const App: React.FC = () => {
 
         try {
             switch (fc.name) {
+                case 'generateImage':
+                    result = `Sige Boss, generating image based on: "${fc.args.prompt}". It will be ready in a moment.`;
+                    addNotification('Simulating image generation...', 'info');
+                    break;
+                case 'editImage':
+                    result = `Okay, editing the image "${fc.args.fileName}" with your instructions.`;
+                    addNotification('Simulating image editing...', 'info');
+                    break;
+                case 'createMusic':
+                    result = `Got it, creating a new music track for you.`;
+                    addNotification('Simulating music creation...', 'info');
+                    break;
+                case 'playMusic':
+                    if (!audioPlayerRef.current) {
+                        result = "Sorry Boss, the audio player isn't ready.";
+                    } else {
+                        const audioLibrary = mediaLibrary.filter(item => item.type === 'audio');
+                        if (audioLibrary.length === 0) {
+                            result = "The music library is empty, Boss. Add some tracks in the settings.";
+                            break;
+                        }
+                        const trackName = fc.args.trackName as string | undefined;
+                        let trackToPlay = trackName ? audioLibrary.find(t => t.name.toLowerCase() === trackName.toLowerCase()) : audioLibrary[Math.floor(Math.random() * audioLibrary.length)];
+                        
+                        if (!trackToPlay) {
+                             result = `I couldn't find "${trackName}" in the library, Boss.`;
+                        } else {
+                            const volume = fc.args.volume as number | undefined;
+                            audioPlayerRef.current.src = trackToPlay.url;
+                            audioPlayerRef.current.volume = volume ?? 0.5;
+                            audioPlayerRef.current.play();
+                            result = `Playing "${trackToPlay.name}". Sige, Boss.`;
+                        }
+                    }
+                    break;
                 case 'listFiles':
                     result = uploadedFiles.length > 0 ? `Current files: ${uploadedFiles.map(f => f.name).join(', ')}` : "No files have been uploaded yet.";
                     break;
@@ -427,7 +467,7 @@ const App: React.FC = () => {
              setAgentStatus('listening');
         }
         return result;
-    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask]);
+    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary]);
 
     const endSession = useCallback(async () => {
         if (isRecording) {
@@ -617,6 +657,11 @@ const App: React.FC = () => {
         localStorage.setItem('alex_integrations', JSON.stringify(newIntegrations));
         addNotification(`${name} integration updated.`, 'success');
     };
+
+    const handleSaveMediaLibrary = (library: MediaItem[]) => {
+        setMediaLibrary(library);
+        localStorage.setItem('alex_media_library', JSON.stringify(library));
+    };
     
     const toggleSession = useCallback(() => { agentStatus !== 'idle' ? endSession() : startSession(); }, [endSession, startSession, agentStatus]);
     const handleToggleOutputMute = () => { const mute = !isOutputMuted; setIsOutputMuted(mute); toggleOutputMuteRef.current?.(mute); };
@@ -646,6 +691,7 @@ const App: React.FC = () => {
 
     return (
         <div className="relative flex flex-col h-screen bg-black text-white font-sans overflow-hidden">
+            <audio ref={audioPlayerRef} hidden />
              <Sidebar 
                 isOpen={isSidebarOpen}
                 conversations={conversations}
@@ -661,6 +707,8 @@ const App: React.FC = () => {
                 onSaveSystemPrompt={handleSaveSystemPrompt}
                 integrations={integrations}
                 onSaveIntegration={handleSaveIntegration}
+                mediaLibrary={mediaLibrary}
+                onSaveMediaLibrary={handleSaveMediaLibrary}
             />
             {view === 'chat' && (
                 <ChatView 
@@ -700,10 +748,10 @@ const App: React.FC = () => {
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3.8 7.2c.8-1.6 2-3 3.5-4 1.5-1 3.3-1.4 5.2-1.2 1.9.2 3.6.9 5 2.1 1.4 1.2 2.5 2.8 3 4.7.5 1.9.5 3.9.1 5.8s-1.2 3.6-2.4 5c-1.2 1.4-2.8 2.5-4.7 3s-3.9.5-5.8.1-3.6-1.2-5-2.4-2.5-2.8-3-4.7c-.5-1.9-.5-4 .1-5.9zM10 12c.3-1.3 1.4-2 3-2 1.6 0 2.9.8 3 2.2.1 1.2-.6 2.2-2 2.8"/><path d="M10 16c.3-1.3 1.4-2 3-2 1.6 0 2.9.8 3 2.2.1 1.2-.6 2.2-2 2.8"/></svg>
                         </button>
                         <button onClick={handleToggleOutputMute} className={`p-2 transition-colors active:scale-95 ${isOutputMuted ? 'text-red-500' : 'hover:text-white'}`} aria-label="Toggle Speaker">
-                            {isOutputMuted ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" x2="17" y1="9" y2="15"></line><line x1="17" x2="23" y1="9" y2="15"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>}
+                            {isOutputMuted ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" x2="17" y1="9" y2="15"></line><line x1="17" x2="23" y1="9" y2="15"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>}
                         </button>
                         <button onClick={() => setIsSettingsOpen(true)} className="p-2 transition-colors hover:text-white active:scale-95" aria-label="Open Settings">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                         </button>
                     </div>
                 </header>
@@ -729,10 +777,10 @@ const App: React.FC = () => {
                 <footer className="absolute bottom-0 left-0 right-0 p-4 md:p-6 z-10">
                     <div className="flex justify-around items-center max-w-xs md:max-w-sm mx-auto bg-black/20 backdrop-blur-md p-2 rounded-full">
                         <button onClick={handleToggleVideo} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all active:scale-95 ${isVideoEnabled ? 'bg-blue-500/50 hover:bg-blue-500/70' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isVideoEnabled ? "Turn off Video" : "Turn on Video"}>
-                            {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6Z"/><path d="m2 5 1-1h10l1 1v10l-1 1H3l-1-1Z"/><path d="m2 14 3-3 2 2 3-3 2 2"/></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6Z"/><path d="M2 5h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/></svg>}
+                            {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6Z"/><path d="m2 5 1-1h10l1 1v10l-1 1H3l-1-1Z"/><path d="m2 14 3-3 2 2 3-3 2 2"/></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6Z"/><path d="M2 5h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/></svg>}
                         </button>
                         <button onClick={handleToggleScreenShare} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${isScreenSharing ? 'bg-blue-500/50 hover:bg-blue-500/70' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isScreenSharing ? "Stop Sharing Screen" : "Share Screen"}>
-                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 17a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16z"/><path d="M12 11v-4"/><path d="m9 10 3-3 3 3"/></svg>
+                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 17a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16z"/><path d="M12 11v-4"/><path d="m9 10 3-3 3 3"/></svg>
                         </button>
                         <button onClick={handleToggleRecording} disabled={agentStatus === 'idle' || agentStatus === 'connecting' || agentStatus === 'verifying'} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${isRecording ? 'bg-red-600/80 animate-pulse-record' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isRecording ? "Stop Recording" : "Start Recording"}>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="currentColor" className="text-white"><circle cx="12" cy="12" r="10"></circle></svg>

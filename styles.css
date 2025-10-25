@@ -75,21 +75,37 @@ $shadows-big:    multiple-box-shadow(100);
 }
 .animate-glow-medium { animation: glow-medium 4s ease-in-out infinite; animation-delay: 1s; }
 
-@keyframes plasma {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-.animate-plasma { animation: plasma 20s ease infinite; }
 
-@keyframes plasma-idle {
-    0%   { background-position: 49% 51%; }
-    25%  { background-position: 51% 51%; }
-    50%  { background-position: 51% 49%; }
-    75%  { background-position: 49% 49%; }
-    100% { background-position: 49% 51%; }
+@keyframes rumble {
+  0% { transform: translate(1px, 2px) rotate(0.5deg); opacity: 0.8; }
+  10% { transform: translate(-2px, -1px) rotate(-0.5deg); }
+  20% { transform: translate(-3px, 0px) rotate(1.5deg); }
+  30% { transform: translate(0px, 3px) rotate(0.5deg); }
+  40% { transform: translate(1px, -2px) rotate(-0.5deg); opacity: 0.9; }
+  50% { transform: translate(-2px, 3px) rotate(-1.5deg); }
+  60% { transform: translate(-3px, 1px) rotate(0.5deg); }
+  70% { transform: translate(3px, 2px) rotate(-0.5deg); }
+  80% { transform: translate(-1px, -2px) rotate(1.5deg); opacity: 0.8; }
+  90% { transform: translate(2px, 3px) rotate(-1.5deg); }
+  100% { transform: translate(1px, -3px) rotate(0.5deg); }
 }
-.animate-plasma-idle { animation: plasma-idle 90s linear infinite; }
+.animate-rumble::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle at 70% 20%, #B5654D 0%, #2E2522 60%);
+  animation: rumble 0.3s linear infinite alternate;
+  mix-blend-mode: screen;
+}
+.animate-rumble::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle at 20% 80%, #E4C7B8 0%, #2E2522 50%);
+  animation: rumble 0.4s linear infinite alternate-reverse;
+  mix-blend-mode: lighten;
+  opacity: 0.7;
+}
 
 @keyframes pulse-slow {
     0%, 100% { transform: scale(1); opacity: 0.5; }
@@ -156,4 +172,9 @@ $shadows-big:    multiple-box-shadow(100);
 }
 .scrollbar-track-transparent::-webkit-scrollbar-track {
     background: transparent;
+}
+
+/* --- Misc Helper Classes --- */
+.bg-gradient-radial {
+    background-image: radial-gradient(var(--tw-gradient-stops));
 }

@@ -35,3 +35,10 @@ export interface BackgroundTask {
 export interface IntegrationCredentials {
     [key: string]: any;
 }
+
+export interface MediaItem {
+    id: number;
+    name: string;
+    url: string;
+    type: 'audio' | 'video';
+}

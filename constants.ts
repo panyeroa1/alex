@@ -119,6 +119,52 @@ FINAL REMINDER
 
 export const DEV_TOOLS: FunctionDeclaration[] = [
     {
+        name: 'generateImage',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Generates an image based on a textual description.',
+            properties: {
+                prompt: { type: Type.STRING, description: 'A detailed description of the image to create.' },
+            },
+            required: ['prompt'],
+        },
+    },
+    {
+        name: 'editImage',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Edits an existing uploaded image based on a textual description.',
+            properties: {
+                fileName: { type: Type.STRING, description: 'The name of the uploaded file to edit.' },
+                prompt: { type: Type.STRING, description: 'A detailed description of the edits to perform.' },
+            },
+            required: ['fileName', 'prompt'],
+        },
+    },
+     {
+        name: 'createMusic',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Creates a piece of music based on a textual description.',
+            properties: {
+                prompt: { type: Type.STRING, description: 'A detailed description of the music to create (e.g., "a lo-fi hip hop beat").' },
+                durationInSeconds: { type: Type.NUMBER, description: 'The desired duration of the music in seconds.' },
+            },
+            required: ['prompt'],
+        },
+    },
+    {
+        name: 'playMusic',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Plays a music track from the user-defined media library. If no track name is given, a random track is played.',
+            properties: {
+                trackName: { type: Type.STRING, description: 'The name of the track to play from the library.' },
+                volume: { type: Type.NUMBER, description: 'The volume level, from 0.0 (silent) to 1.0 (full volume).' },
+            },
+        },
+    },
+    {
         name: 'runDeployment',
         parameters: {
             type: Type.OBJECT,

@@ -70,7 +70,7 @@ const OrbGraphics: React.FC<{ status: AgentStatus; analyserNode: AnalyserNode | 
     const isExecuting = status === 'executing';
     const isSpeaking = status === 'speaking';
     const isListening = status === 'listening';
-    const isActive = isListening || isSpeaking;
+    const isActive = isListening || isSpeaking || isExecuting;
     const isIdle = status === 'idle';
 
     return (
@@ -84,17 +84,16 @@ const OrbGraphics: React.FC<{ status: AgentStatus; analyserNode: AnalyserNode | 
                 <div className="absolute w-full h-full rounded-full bg-red-800/50 animate-pulse-slow"></div>
             )}
             
-            {/* Loading/Executing Spinner */}
-            {(isConnecting || isExecuting) && (
+            {/* Loading/Connecting Spinner */}
+            {isConnecting && (
                 <div className="absolute w-full h-full rounded-full border-t-2 border-b-2 border-white/50 animate-spin"></div>
             )}
             
             {/* Core Orb */}
-            <div className={`w-full h-full rounded-full overflow-hidden transition-all duration-500 ease-in-out shadow-2xl shadow-black ${isListening ? 'scale-105' : ''} ${isSpeaking ? 'scale-110' : ''}`}>
-                 <div className={`w-full h-full bg-black ${isIdle ? 'animate-plasma-idle' : 'animate-plasma'}`} style={{ 
-                     backgroundSize: '200% 200%', 
-                     backgroundImage: 'radial-gradient(circle at 40% 50%, #E4C7B8 0%, #B5654D 35%, #2E2522 70%)' 
-                 }}></div>
+            <div className={`w-full h-full rounded-full overflow-hidden transition-all duration-500 ease-in-out shadow-2xl shadow-black relative ${isListening ? 'scale-105' : ''} ${isSpeaking ? 'scale-110' : ''}`}>
+                 <div className="w-full h-full bg-black bg-gradient-radial from-[#E4C7B8] via-[#B5654D] to-[#2E2522]"></div>
+                 {/* Rumbling effect for active states */}
+                 {isActive && <div className="absolute inset-0 w-full h-full animate-rumble"></div>}
             </div>
 
             {/* Audio Visualizer */}
