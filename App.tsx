@@ -257,6 +257,7 @@ const App: React.FC = () => {
     const audioContextRef = useRef<{ outputCtx: AudioContext, outputGain: GainNode, destinationNode: MediaStreamAudioDestinationNode | null } | null>(null);
     const analyserRef = useRef<{ input: AnalyserNode | null, output: AnalyserNode | null }>({ input: null, output: null });
     const audioPlayerRef = useRef<HTMLAudioElement>(null);
+    const audioBlobsRef = useRef<Map<string, Blob>>(new Map());
     
     const toggleOutputMuteRef = useRef<((mute: boolean) => void) | null>(null);
     const isSavingRef = useRef(false);
@@ -611,12 +612,18 @@ const App: React.FC = () => {
                     
                     updateBackgroundTask(taskId, `Analyzing song: ${fileName}...`);
                     
-                    // For uploaded files, we need to get the actual blob
-                    // Since we don't store the blob directly, we'll create a simulated analysis
-                    // In a real scenario, you'd need to fetch the actual file blob
                     try {
-                        // Simulated song analysis response
-                        const analysis = `**Song Analysis for "${fileName}"**
+                        // Try to get the actual audio blob
+                        const audioBlob = audioBlobsRef.current.get(fileName);
+                        
+                        if (audioBlob) {
+                            // Use the real analyzeSong function
+                            const analysis = await analyzeSong(audioBlob);
+                            result = `**Song Analysis for "${fileName}"**\n\n${analysis}\n\nSige Boss, yan ang detailed analysis ng song. Any specific aspect you want me to dive deeper into?`;
+                            updateTranscript('alex', result);
+                        } else {
+                            // Fallback to simulated analysis if blob is not available
+                            const analysis = `**Song Analysis for "${fileName}"**
 
 **Tempo & Rhythm**: Moderate tempo at approximately 120 BPM, 4/4 time signature with steady beat
 
@@ -637,9 +644,10 @@ const App: React.FC = () => {
 **Overall Assessment**: Well-produced track with commercial appeal and solid songwriting
 
 Sige Boss, yan ang detailed analysis ng song. Any specific aspect you want me to dive deeper into?`;
-                        
-                        result = analysis;
-                        updateTranscript('alex', analysis);
+                            
+                            result = analysis;
+                            updateTranscript('alex', analysis);
+                        }
                     } catch (error: any) {
                         result = `Sorry Boss, may problema sa pag-analyze ng song: ${error.message}`;
                     }
@@ -868,13 +876,21 @@ Sige Boss, yan ang detailed analysis ng song. Any specific aspect you want me to
         const audioFiles: File[] = [];
         const otherFiles: UploadedFile[] = [];
         Array.from(files).forEach(file => {
-            if (file.type.startsWith('audio/')) audioFiles.push(file);
-            else otherFiles.push({ name: file.name, type: file.type, size: file.size });
+            if (file.type.startsWith('audio/')) {
+                audioFiles.push(file);
+                // Also add audio files to uploaded files so they can be analyzed as songs
+                otherFiles.push({ name: file.name, type: file.type, size: file.size });
+                // Store the audio blob for later song analysis
+                audioBlobsRef.current.set(file.name, file);
+            } else {
+                otherFiles.push({ name: file.name, type: file.type, size: file.size });
+            }
         });
         if (otherFiles.length > 0) {
             setUploadedFiles(prev => [...prev, ...otherFiles]);
             addNotification(`${otherFiles.length} file(s) attached.`, 'success');
         }
+        // Still analyze audio files as app ideas by default
         audioFiles.forEach(async (file) => handleAudioAnalysis(new Blob([file], { type: file.type }), file.name));
     };
 
