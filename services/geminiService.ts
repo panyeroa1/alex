@@ -10,7 +10,7 @@ export interface LiveSession {
 }
 
 // --- Audio/Video Helpers ---
-function decode(base64: string): Uint8Array {
+export function decode(base64: string): Uint8Array {
     const binaryString = atob(base64);
     const len = binaryString.length;
     const bytes = new Uint8Array(len);
@@ -20,7 +20,7 @@ function decode(base64: string): Uint8Array {
     return bytes;
 }
 
-async function decodeAudioData(
+export async function decodeAudioData(
     data: Uint8Array,
     ctx: AudioContext,
     sampleRate: number,
@@ -60,7 +60,7 @@ function createAudioBlob(data: Float32Array): Blob {
     };
 }
 
-const blobToBase64 = (blob: globalThis.Blob): Promise<string> => {
+export const blobToBase64 = (blob: globalThis.Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -297,4 +297,51 @@ export async function generateConversationTitle(history: ChatMessage[]): Promise
         console.error("Failed to generate title:", error);
         return "New Conversation";
     }
+}
+
+// FIX: Changed `Blob` to `globalThis.Blob` to explicitly use the native browser Blob type,
+// resolving type conflicts with the SDK's Blob type and allowing access to properties like `.type`.
+export async function analyzeAudio(audioBlob: globalThis.Blob): Promise<string> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const audioBase64 = await blobToBase64(audioBlob);
+
+    const audioPart = {
+        inlineData: {
+            mimeType: audioBlob.type || 'audio/webm',
+            data: audioBase64,
+        },
+    };
+
+    const textPart = {
+        text: `You are an expert app development consultant. Analyze the following audio recording from a user describing an app idea. The user is your boss, "Master E". Provide a concise summary of the app's overview and its core workflow. Structure your response clearly with an "App Overview" and a "Workflow" section. Be direct and professional.`
+    };
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: { parts: [textPart, audioPart] },
+    });
+
+    return response.text;
+}
+
+export async function synthesizeSpeech(text: string): Promise<string> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text }] }],
+        config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+                voiceConfig: {
+                    // Use the same voice as the live session for consistency
+                    prebuiltVoiceConfig: { voiceName: 'Charon' },
+                },
+            },
+        },
+    });
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!base64Audio) {
+        throw new Error("TTS failed to generate audio.");
+    }
+    return base64Audio;
 }

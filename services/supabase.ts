@@ -10,19 +10,9 @@ export type Database = {
     Tables: {
       conversations: {
         Row: Conversation; // The type of a row in the table
-        // FIX: Corrected the Update type to exclude non-updatable fields like 'id' and 'created_at', which resolves type inference issues with the Supabase client.
-        Insert: {
-            title: string;
-            history: ChatMessage[];
-            user_id?: string | null;
-            recording_url?: string | null;
-        }; // The type for inserting a new row
-        Update: {
-            title?: string;
-            history?: ChatMessage[];
-            user_id?: string | null;
-            recording_url?: string | null;
-        }; // The type for updating a row
+        // By removing the explicit Insert and Update types, we let Supabase infer them
+        // from the Row type, which resolves the type inference issues.
+        // FIX: Removed manual `Insert` and `Update` types to allow Supabase to infer them correctly.
       };
     };
     Views: {
