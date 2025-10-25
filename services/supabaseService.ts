@@ -29,9 +29,16 @@ export const getConversation = async (id: string): Promise<Conversation | null> 
 };
 
 export const createConversation = async (): Promise<Conversation> => {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        console.error("User not authenticated, cannot create conversation.");
+        throw new Error("User not authenticated, cannot create conversation.");
+    }
+
     const { data, error } = await supabase
         .from('conversations')
-        .insert({ title: 'New Conversation', history: [] })
+        .insert({ title: 'New Conversation', history: [], user_id: user.id })
         .select()
         .single();
     
