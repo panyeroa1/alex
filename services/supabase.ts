@@ -1,7 +1,8 @@
 
-
-
 import { createClient } from '@supabase/supabase-js';
+// FIX: Using the 'Json' type from Supabase for jsonb columns is more specific and safer than 'any',
+// and it correctly resolves the type inference issues that were causing 'never' type errors.
+import type { Json } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
 // FIX: Import ChatMessage to be used in the Database type definition.
 import { Conversation, ChatMessage } from '../types';
@@ -17,10 +18,10 @@ export type Database = {
           id: string;
           created_at: string;
           title: string;
-          // FIX: Using 'any' for the 'history' jsonb column. The Supabase client's type inference
+          // FIX: Using 'Json' for the 'history' jsonb column. The Supabase client's type inference
           // can fail with complex array types like 'ChatMessage[]', leading to 'never' type errors
-          // on insert/update operations. 'any' is used here as a pragmatic solution.
-          history: any;
+          // on insert/update operations. 'Json' is the correct type for this.
+          history: Json;
           summary: string | null;
           user_id: string;
           recording_url: string | null;
@@ -32,8 +33,8 @@ export type Database = {
           id?: string;
           created_at?: string;
           title: string;
-          // FIX: Using 'any' to match the Row definition and fix insert type errors.
-          history?: any;
+          // FIX: Using 'Json' to match the Row definition and fix insert type errors.
+          history?: Json;
           summary?: string | null;
           user_id: string;
           recording_url?: string | null;
@@ -42,8 +43,8 @@ export type Database = {
           id?: string;
           created_at?: string;
           title?: string;
-          // FIX: Using 'any' to match the Row definition and fix update type errors.
-          history?: any;
+          // FIX: Using 'Json' to match the Row definition and fix update type errors.
+          history?: Json;
           summary?: string | null;
           user_id?: string;
           recording_url?: string | null;
