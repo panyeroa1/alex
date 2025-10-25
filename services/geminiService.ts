@@ -1,5 +1,7 @@
 
 
+
+
 import { GoogleGenAI, LiveServerMessage, Modality, Blob, FunctionDeclaration, FunctionCall, Chat, Part, GenerateContentResponse, Type } from "@google/genai";
 import { ChatMessage, Conversation, MediaItem } from "../types";
 
@@ -569,7 +571,12 @@ export async function analyzeAudioTone(audioBlob: globalThis.Blob): Promise<stri
     };
 
     const textPart = {
-        text: `You are an expert music analyst. Analyze the following audio recording. Describe its musical and emotional tone. What instruments do you hear? What is the genre and mood? Be descriptive and insightful.`
+        text: `You are an expert music analyst. Analyze the following audio recording. Provide a detailed breakdown in Markdown format.
+1.  **Key**: The musical key of the song (e.g., C Major, A minor). If you cannot determine the exact key, describe the tonality (e.g., major, minor, modal).
+2.  **Tempo**: The estimated tempo in Beats Per Minute (BPM).
+3.  **Pitch**: Describe the general pitch range and characteristics (e.g., high female vocals, low baritone, wide vocal range, consistent instrumental pitch).
+4.  **Mood & Emotion**: Describe the overall emotional feeling of the song (e.g., melancholic, upbeat, aggressive, peaceful).
+5.  **Genre & Instruments**: Identify the musical genre and the primary instruments you can hear.`
     };
     
     try {

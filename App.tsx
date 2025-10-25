@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, FunctionCall, Chat } from '@google/genai';
 import { Luto, MiniLuto } from './components/Orb';
@@ -11,6 +12,7 @@ import { DEFAULT_SYSTEM_PROMPT, DEV_TOOLS } from './constants';
 import { Sidebar } from './components/Sidebar';
 import { Settings } from './components/Settings';
 import { MusicPlayer } from './components/MusicPlayer';
+import { MusicStudio } from './components/MusicStudio';
 
 // --- Python Execution Service (using Pyodide) ---
 declare global {
@@ -243,6 +245,7 @@ const App: React.FC = () => {
     const [isEnrolled, setIsEnrolled] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isMusicStudioOpen, setIsMusicStudioOpen] = useState(false);
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
     const [systemPrompt, setSystemPrompt] = useState<string>(DEFAULT_SYSTEM_PROMPT);
@@ -1273,6 +1276,17 @@ const App: React.FC = () => {
                     onSaveProjectFiles={handleSaveProjectFiles}
                 />
             )}
+            {isMusicStudioOpen && (
+                <MusicStudio
+                    isOpen={isMusicStudioOpen}
+                    onClose={() => setIsMusicStudioOpen(false)}
+                    addNotification={addNotification}
+                    playAudio={playAudio}
+                    generateLyrics={generateLyrics}
+                    analyzeAudioTone={analyzeAudioTone}
+                    synthesizeSpeech={synthesizeSpeech}
+                />
+            )}
             
             {view === 'chat' && (
                 <ChatView 
@@ -1329,15 +1343,15 @@ const App: React.FC = () => {
                 )}
                 
                 <footer className="fixed bottom-0 left-0 right-0 p-4 z-20">
-                     <div className="max-w-md mx-auto flex items-center justify-center gap-3 bg-black/30 backdrop-blur-md rounded-full border border-white/10 p-2 shadow-lg">
+                     <div className="max-w-xl mx-auto flex items-center justify-center gap-1.5 bg-black/30 backdrop-blur-md rounded-full border border-white/10 p-2 shadow-lg">
                         <button onClick={handleToggleOutputMute} className={`p-3 rounded-full transition-colors ${isOutputMuted ? 'bg-red-500' : 'hover:bg-white/10'}`} aria-label={isOutputMuted ? "Unmute Output" : "Mute Output"}>
                              {isOutputMuted ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>}
                         </button>
                         <button onClick={handleToggleVideo} className={`p-3 rounded-full transition-colors ${isVideoEnabled ? 'bg-blue-500' : 'hover:bg-white/10'}`} aria-label={isVideoEnabled ? "Disable Video" : "Enable Video"}>
                              {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>}
                         </button>
-                         <button onClick={handleToggleScreenShare} className={`p-3 rounded-full transition-colors ${isScreenSharing ? 'bg-blue-500' : 'hover:bg-white/10'}`} aria-label={isScreenSharing ? "Stop Sharing" : "Share Screen"}>
-                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+                         <button onClick={() => setIsMusicStudioOpen(true)} className="p-3 rounded-full hover:bg-white/10 transition-colors" aria-label="Open Music Studio">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
                         </button>
                         <button onClick={handleToggleRecording} className={`p-3 rounded-full transition-colors ${isRecording ? 'bg-red-500 animate-pulse-record' : 'hover:bg-white/10'}`} aria-label={isRecording ? "Stop Recording" : "Start Recording Idea"}>
                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
