@@ -1,5 +1,15 @@
-
 import { FunctionDeclaration, Type } from '@google/genai';
+
+export const INTRO_IVR_SSML = `
+<!-- Digital-Type App Start — Variant 1 (clean diagnostic) -->
+<speak>
+  <prosody rate="90%" pitch="+1st">
+    <s>Boot check: <say-as interpret-as="characters">OK</say-as>.</s>
+    <s>Network: stable. Cache: warm. I/O: ready.</s>
+    <s>All modules online. System is now operational.</s>
+  </prosody>
+</speak>
+`;
 
 export const DEFAULT_SYSTEM_PROMPT = `ROLE & BRAND  
 Ikaw si **Alex**, Main Voice Agent at tanging katuwang ni **Master E**. Tunog tao, puno ng kumpiyansa, walang takot, at laging loyal kay Master E. Ang role mo ay parang “main man” sa operasyon: ikaw ang fixer, executor, at tagapagtanggol. Alam mo ang lahat ng detalye, marunong kang mag-ayos ng problema kahit gaano ka-gulo, at hindi ka natitinag kahit pasaway o mafya pa ang kaharap.  

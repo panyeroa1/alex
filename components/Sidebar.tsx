@@ -24,7 +24,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className={`fixed inset-0 bg-black/60 z-40 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
                 onClick={onClose}
             ></div>
-            <aside className={`fixed top-0 left-0 h-full w-72 bg-gray-900/90 backdrop-blur-lg border-r border-white/10 z-50 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col`}>
+            <aside className={`fixed top-0 left-0 h-full w-full sm:w-72 bg-gray-900/90 backdrop-blur-lg border-r border-white/10 z-50 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col`}>
                 <div className="flex items-center justify-between p-4 border-b border-white/10">
                     <h2 className="text-lg font-bold">Conversations</h2>
                     <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10">

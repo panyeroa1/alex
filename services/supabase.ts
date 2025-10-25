@@ -1,4 +1,6 @@
 
+
+
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
 // FIX: Import ChatMessage to be used in the Database type definition.
@@ -10,13 +12,14 @@ export type Database = {
     Tables: {
       conversations: {
         // FIX: Replaced Omit<...> with an explicit Row definition to resolve a complex
-        // TypeScript inference issue with the Supabase client. The 'history' column,
-        // a jsonb type, is set to 'any' to ensure Supabase can generate valid
-        // types for operations, preventing the 'never' type error.
+        // TypeScript inference issue with the Supabase client.
         Row: {
           id: string;
           created_at: string;
           title: string;
+          // FIX: Using 'any' for the 'history' jsonb column. The Supabase client's type inference
+          // can fail with complex array types like 'ChatMessage[]', leading to 'never' type errors
+          // on insert/update operations. 'any' is used here as a pragmatic solution.
           history: any;
           summary: string | null;
           user_id: string;
@@ -29,6 +32,7 @@ export type Database = {
           id?: string;
           created_at?: string;
           title: string;
+          // FIX: Using 'any' to match the Row definition and fix insert type errors.
           history?: any;
           summary?: string | null;
           user_id: string;
@@ -38,6 +42,7 @@ export type Database = {
           id?: string;
           created_at?: string;
           title?: string;
+          // FIX: Using 'any' to match the Row definition and fix update type errors.
           history?: any;
           summary?: string | null;
           user_id?: string;

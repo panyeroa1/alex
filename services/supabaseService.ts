@@ -1,3 +1,4 @@
+
 import { supabase } from './supabase';
 import { ChatMessage, Conversation, MediaItem } from '../types';
 
@@ -49,7 +50,8 @@ export const createConversation = async (): Promise<Conversation> => {
 
     const newConversation = {
         title: 'New Conversation',
-        history: [] as any, // FIX: Cast to `any` to bypass Supabase client type inference issues with jsonb.
+        // FIX: Removed `as any` cast. With the corrected Database type, this is no longer needed.
+        history: [],
         user_id: user.id,
     };
 
@@ -69,7 +71,8 @@ export const createConversation = async (): Promise<Conversation> => {
 export const saveConversationHistory = async (id: string, history: ChatMessage[]): Promise<void> => {
     const { error } = await supabase
         .from('conversations')
-        .update({ history: history as any }) // FIX: Cast to `any` to bypass Supabase client type inference issues with jsonb.
+        // FIX: Removed `as any` cast. With the corrected Database type, this is no longer needed.
+        .update({ history: history })
         .eq('id', id);
 
     if (error) {

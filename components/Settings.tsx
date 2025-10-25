@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { IntegrationCredentials, MediaItem, ProjectFile } from '../types';
 import { IntegrationModal } from './IntegrationModal';
@@ -12,6 +13,10 @@ interface SettingsProps {
     onSaveIntegration: (name: string, creds: any) => void;
     onSaveStoryAuth: (config: { enabled: boolean; key: string | null; }) => void;
     onSaveMux: (config: { enabled: boolean; tokenId: string | null; tokenSecret: string | null; }) => void;
+    // FIX: Add missing props for integrations to match what is passed from App.tsx.
+    onSaveNeon: (config: { enabled: boolean; databaseUrl: string | null; }) => void;
+    onSaveUpstashRedis: (config: { enabled: boolean; url: string | null; token: string | null; }) => void;
+    onSaveUpstashSearch: (config: { enabled: boolean; url: string | null; token: string | null; }) => void;
     mediaLibrary: MediaItem[];
     onSaveMediaLibrary: (library: MediaItem[]) => void;
     onMediaFileUpload: (file: File) => Promise<void>;

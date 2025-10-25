@@ -1,4 +1,3 @@
-
 export type AgentStatus = 'idle' | 'verifying' | 'connecting' | 'listening' | 'speaking' | 'executing' | 'recalling';
 
 export interface Notification {
@@ -52,7 +51,21 @@ export interface IntegrationCredentials {
         enabled: boolean;
         tokenId: string | null;
         tokenSecret: string | null;
-    }
+    };
+    neon?: {
+        enabled: boolean;
+        databaseUrl: string | null;
+    };
+    upstashRedis?: {
+        enabled: boolean;
+        url: string | null;
+        token: string | null;
+    };
+    upstashSearch?: {
+        enabled: boolean;
+        url: string | null;
+        token: string | null;
+    };
 }
 
 export interface MediaItem {

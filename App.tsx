@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, FunctionCall, Chat } from '@google/genai';
 import { Luto, MiniLuto } from './components/Orb';
@@ -6,7 +5,7 @@ import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, Bac
 import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData, analyzeCode, summarizeConversationsForMemory, generateConversationSummary, performWebSearch, searchYouTube, generateLyrics, analyzeAudioTone, blobToBase64 } from './services/geminiService';
 import * as db from './services/supabaseService';
 import { supabase } from './services/supabase';
-import { DEFAULT_SYSTEM_PROMPT, DEV_TOOLS } from './constants';
+import { DEFAULT_SYSTEM_PROMPT, DEV_TOOLS, INTRO_IVR_SSML } from './constants';
 import { Sidebar } from './components/Sidebar';
 import { Settings } from './components/Settings';
 import { MusicPlayer } from './components/MusicPlayer';
@@ -368,6 +367,7 @@ const App: React.FC = () => {
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
     const [view, setView] = useState<'voice' | 'chat'>('voice');
     const [isEnrolled, setIsEnrolled] = useState(false);
+    const [hasPlayedIntro, setHasPlayedIntro] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isMusicStudioOpen, setIsMusicStudioOpen] = useState(false);
@@ -379,8 +379,11 @@ const App: React.FC = () => {
     const [integrations, setIntegrations] = useState<IntegrationCredentials>({
         storyAuth: { enabled: false, key: null },
         mux: { enabled: false, tokenId: null, tokenSecret: null },
+        neon: { enabled: false, databaseUrl: null },
+        upstashRedis: { enabled: false, url: null, token: null },
+        upstashSearch: { enabled: false, url: null, token: null },
     });
-    const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
+    const [logMessage, setLogMessage] = useState<string | null>(null);
     const [mediaLibrary, setMediaLibrary] = useState<MediaItem[]>([]);
     const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
     const [isPyodideReady, setIsPyodideReady] = useState(false);
@@ -414,6 +417,7 @@ const App: React.FC = () => {
     const youtubePlayerRef = useRef<any>(null);
     const [isYouTubeApiReady, setIsYouTubeApiReady] = useState(false);
     const progressIntervalRef = useRef<number | null>(null);
+    const logTimeoutRef = useRef<number | null>(null);
     
     const toggleOutputMuteRef = useRef<((mute: boolean) => void) | null>(null);
     const isSavingRef = useRef(false);
@@ -425,6 +429,14 @@ const App: React.FC = () => {
         setTimeout(() => {
             setNotifications(prev => prev.filter(n => n.id !== id));
         }, 5000);
+    }, []);
+
+    const updateLog = useCallback((message: string, duration: number = 5000) => {
+        if (logTimeoutRef.current) clearTimeout(logTimeoutRef.current);
+        setLogMessage(message);
+        logTimeoutRef.current = window.setTimeout(() => {
+            setLogMessage(null);
+        }, duration);
     }, []);
 
     const endSession = useCallback(async () => {
@@ -461,6 +473,39 @@ const App: React.FC = () => {
         return newConvo;
     }, [endSession]);
 
+    const playAudio = useCallback(async (base64Audio: string) => {
+        if (!base64Audio) return;
+    
+        let localAudioContext = audioContextRef.current;
+    
+        if (!localAudioContext) {
+            const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+            const outputGain = outputCtx.createGain();
+            outputGain.connect(outputCtx.destination);
+            localAudioContext = { outputCtx, outputGain, destinationNode: null };
+            audioContextRef.current = localAudioContext;
+        }
+        
+        const { outputCtx, outputGain } = localAudioContext;
+    
+        setAgentStatus('speaking');
+        try {
+            const audioBuffer = await decodeAudioData(decode(base64Audio), outputCtx, 24000, 1);
+            const source = outputCtx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(outputGain);
+            source.start();
+        
+            source.onended = () => {
+                setAgentStatus(sessionRef.current ? 'listening' : 'idle');
+            };
+        } catch (error) {
+            console.error("Failed to play audio:", error);
+            addNotification("Error playing audio response.", "error");
+            setAgentStatus(sessionRef.current ? 'listening' : 'idle');
+        }
+    }, [addNotification]);
+
     const initializeApp = useCallback(async () => {
         try {
             await db.signInAnonymouslyIfNeeded();
@@ -476,12 +521,10 @@ const App: React.FC = () => {
             
             if (convoToLoad) {
                 setCurrentConversationId(convoToLoad.id);
-                // Check for a local backup
                 const backupRaw = localStorage.getItem(`alex_conversation_backup_${convoToLoad.id}`);
                 if (backupRaw) {
                     try {
                         const backupHistory: ChatMessage[] = JSON.parse(backupRaw);
-                        // Simple logic: if backup has more messages, it's likely newer.
                         if (backupHistory.length > convoToLoad.history.length) {
                             setTranscript(backupHistory);
                             addNotification("Restored unsaved changes from last session.", "info");
@@ -497,7 +540,6 @@ const App: React.FC = () => {
                 }
             }
             
-            // Load media library from both Supabase Storage (for uploads) and localStorage (for links)
             const uploadedMedia = await db.listMediaFiles();
             const storedLinksRaw = localStorage.getItem('alex_media_library_links');
             const storedLinks = storedLinksRaw ? JSON.parse(storedLinksRaw) : [];
@@ -528,33 +570,37 @@ const App: React.FC = () => {
         const savedProjectFiles = localStorage.getItem('alex_project_files');
         if(savedProjectFiles) setProjectFiles(JSON.parse(savedProjectFiles));
 
-        if (enrolled) {
+        if (enrolled && !hasPlayedIntro) {
             initializeApp();
-             // Initialize Pyodide in the background
+            setHasPlayedIntro(true); // Prevent re-triggering
+
+            setTimeout(() => {
+                synthesizeSpeech(INTRO_IVR_SSML)
+                    .then(playAudio)
+                    .catch(e => console.error("Failed to play intro IVR", e));
+            }, 500);
+
             initializePyodide()
                 .then(() => {
-                    setIsPyodideReady(true);
-                    addNotification("Python environment ready.", "success");
+                    updateLog("Python environment ready.", 3000);
                 })
                 .catch(err => {
                     console.error("Failed to load Pyodide:", err);
-                    addNotification("Failed to load Python environment.", "error");
+                    updateLog("Python environment failed to load.", 5000);
                 });
         }
-    }, [isEnrolled, initializeApp, addNotification]);
+    }, [isEnrolled, initializeApp, addNotification, hasPlayedIntro, playAudio, updateLog]);
     
-    // Supabase Keep-Alive: Periodically refresh the session to prevent expiration.
     useEffect(() => {
         const keepAliveInterval = setInterval(async () => {
             try {
-                // A lightweight query to keep the session active
                 const { error } = await supabase.auth.getSession();
                 if (error) throw error;
                 console.log('Supabase session kept alive.');
             } catch (error) {
                 console.error('Keep-alive ping failed:', error);
             }
-        }, 5 * 60 * 1000); // every 5 minutes
+        }, 5 * 60 * 1000);
 
         return () => clearInterval(keepAliveInterval);
     }, []);
@@ -564,29 +610,9 @@ const App: React.FC = () => {
         setIsEnrolled(true);
         addNotification('Voiceprint enrolled successfully.', 'success');
     };
-    
-    const addBackgroundTask = useCallback((message: string): number => {
-        const id = Date.now();
-        setBackgroundTasks(prev => [...prev, { id, message }]);
-        return id;
-    }, []);
-
-    const updateBackgroundTask = useCallback((id: number, message: string) => {
-        setBackgroundTasks(prev => prev.map(task => task.id === id ? { ...task, message } : task));
-    }, []);
-
-    const removeBackgroundTask = useCallback((id: number) => {
-        setTimeout(() => {
-            setBackgroundTasks(prev => prev.filter(task => task.id !== id));
-        }, 3000);
-    }, []);
 
     const checkAndGenerateTitle = useCallback(async (newHistory: ChatMessage[]) => {
         const currentConvo = conversations.find(c => c.id === currentConversationId);
-        // To prevent spamming the API on every partial transcript (which causes rate limit errors),
-        // only generate a title if it's the default, there's at least one user message
-        // and one agent message, and the last message is from Alex. This ensures we only
-        // try to generate a title after the first full exchange.
         if (currentConvo && currentConvo.title === 'New Conversation' && newHistory.length >= 2) {
             const lastMessage = newHistory[newHistory.length - 1];
             const secondLastMessage = newHistory[newHistory.length - 2];
@@ -630,7 +656,7 @@ const App: React.FC = () => {
                 .finally(() => {
                     isSavingRef.current = false;
                 });
-        }, 1000); // Debounce for 1 second
+        }, 1000); 
     }, [addNotification]);
 
     const updateTranscript = useCallback((speaker: 'user' | 'alex', text: string) => {
@@ -653,7 +679,6 @@ const App: React.FC = () => {
         });
     }, [checkAndGenerateTitle, saveConversation, currentConversationId]);
     
-    // Auto-save every 30 seconds
     useEffect(() => {
         const interval = setInterval(() => {
             setTranscript(currentTranscript => {
@@ -666,39 +691,6 @@ const App: React.FC = () => {
 
         return () => clearInterval(interval);
     }, [currentConversationId, saveConversation]);
-
-    const playAudio = useCallback(async (base64Audio: string) => {
-        if (!base64Audio) return;
-    
-        let localAudioContext = audioContextRef.current;
-    
-        if (!localAudioContext) {
-            const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-            const outputGain = outputCtx.createGain();
-            outputGain.connect(outputCtx.destination);
-            localAudioContext = { outputCtx, outputGain, destinationNode: null };
-            audioContextRef.current = localAudioContext;
-        }
-        
-        const { outputCtx, outputGain } = localAudioContext;
-    
-        setAgentStatus('speaking');
-        try {
-            const audioBuffer = await decodeAudioData(decode(base64Audio), outputCtx, 24000, 1);
-            const source = outputCtx.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(outputGain);
-            source.start();
-        
-            source.onended = () => {
-                setAgentStatus(sessionRef.current ? 'listening' : 'idle');
-            };
-        } catch (error) {
-            console.error("Failed to play audio:", error);
-            addNotification("Error playing audio response.", "error");
-            setAgentStatus(sessionRef.current ? 'listening' : 'idle');
-        }
-    }, [addNotification]);
     
     const handleAudioAnalysis = useCallback(async (audioBlob: globalThis.Blob, fileName?: string) => {
         addNotification(fileName ? `Analyzing ${fileName}...` : 'Analyzing your app idea...', 'info');
@@ -726,7 +718,6 @@ const App: React.FC = () => {
     }, [addNotification, updateTranscript, playAudio]);
 
     const handleSaveMediaLibrary = useCallback((newLibrary: MediaItem[]) => {
-        // Detect removed items that were uploaded to storage
         const removedItems = mediaLibrary.filter(oldItem => 
             oldItem.source === 'upload' && !newLibrary.some(newItem => newItem.id === oldItem.id)
         );
@@ -738,10 +729,9 @@ const App: React.FC = () => {
         setMediaLibrary(newLibrary);
         setPlaylist(newLibrary.filter(item => item.type === 'audio'));
         
-        // Persist only non-uploaded items (links) to localStorage
         const nonUploadedItems = newLibrary.filter(item => item.source !== 'upload');
         localStorage.setItem('alex_media_library_links', JSON.stringify(nonUploadedItems));
-    }, [mediaLibrary]); // Depends on mediaLibrary to compare old and new states
+    }, [mediaLibrary]);
 
     const playTrack = useCallback((track: MediaItem) => {
         setCurrentTrack(track);
@@ -854,7 +844,7 @@ const App: React.FC = () => {
 
     const executeToolCall = useCallback(async (fc: FunctionCall, source: 'voice' | 'chat') => {
         if (source === 'voice') setAgentStatus('executing');
-        const taskId = addBackgroundTask(`Executing: ${fc.name}...`);
+        updateLog(`Executing: ${fc.name}...`);
         
         await new Promise(resolve => setTimeout(resolve, 500));
         
@@ -867,7 +857,7 @@ const App: React.FC = () => {
                         result = "Error: No active conversation to save.";
                         break;
                     }
-                    updateBackgroundTask(taskId, `Saving notes to long-term memory...`);
+                    updateLog(`Saving notes to long-term memory...`);
                     const summary = await generateConversationSummary(transcript);
                     await db.updateConversationSummary(currentConversationId, summary);
                     result = `Sige Boss, na-save ko na sa memory ko.`;
@@ -878,7 +868,7 @@ const App: React.FC = () => {
                     break;
                 case 'getPipelineStatus': {
                     const pipelineName = fc.args.pipelineName as string;
-                    updateBackgroundTask(taskId, `Checking status for '${pipelineName}'...`);
+                    updateLog(`Checking status for '${pipelineName}'...`);
                     await new Promise(resolve => setTimeout(resolve, 2000));
                     const statuses = ['Succeeded', 'Failed', 'In Progress'];
                     const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
@@ -887,19 +877,10 @@ const App: React.FC = () => {
                 }
                 case 'triggerPipeline': {
                     const pipelineName = fc.args.pipelineName as string;
-                    updateBackgroundTask(taskId, `Triggering pipeline '${pipelineName}'...`);
+                    updateLog(`Triggering pipeline '${pipelineName}'...`);
                     await new Promise(resolve => setTimeout(resolve, 1500));
-                    updateBackgroundTask(taskId, `Pipeline '${pipelineName}' is now running.`);
                     result = `Sige Boss, I've triggered the '${pipelineName}' pipeline. I'll monitor it for you.`;
-
-                    // Simulate the pipeline running in the background
-                    setTimeout(() => {
-                        const finalTaskId = addBackgroundTask(`Monitoring pipeline '${pipelineName}'...`);
-                        setTimeout(() => {
-                            updateBackgroundTask(finalTaskId, `Pipeline '${pipelineName}' completed successfully.`);
-                            removeBackgroundTask(finalTaskId);
-                        }, 5000 + Math.random() * 3000); 
-                    }, 2000);
+                    updateLog(`Pipeline '${pipelineName}' is now running.`);
                     break;
                 }
                 case 'invokeCodingAgent': {
@@ -910,9 +891,9 @@ const App: React.FC = () => {
                     if (!file) {
                         result = `Error: Project file '${fileName}' not found, Boss. Paki-upload muna sa settings.`;
                     } else {
-                        updateBackgroundTask(taskId, `Coding agent analyzing '${fileName}'...`);
+                        updateLog(`Coding agent analyzing '${fileName}'...`);
                         await new Promise(resolve => setTimeout(resolve, 2500));
-                        updateBackgroundTask(taskId, `Agent working on: ${task}`);
+                        updateLog(`Agent working on: ${task}`);
                         await new Promise(resolve => setTimeout(resolve, 4000));
                         result = `Sige Boss, the coding agent has completed the task on '${fileName}'. Ready for review.`;
                     }
@@ -929,7 +910,7 @@ const App: React.FC = () => {
                 case 'createSong': {
                     const prompt = fc.args.prompt as string;
                     const genre = fc.args.genre as string | undefined;
-                    updateBackgroundTask(taskId, `Writing a ${genre || ''} song about "${prompt}"...`);
+                    updateLog(`Writing a ${genre || ''} song about "${prompt}"...`);
                     const lyrics = await generateLyrics(prompt, genre);
                     result = `Sige Boss, eto na yung sinulat kong kanta para sa'yo:\n\n${lyrics}`;
                     break;
@@ -941,7 +922,7 @@ const App: React.FC = () => {
                         result = `Error: Hindi ko mahanap yung file na "${fileName}", Boss. Paki-upload muna.`;
                         break;
                     }
-                    updateBackgroundTask(taskId, `Analyzing the tone of "${fileName}"...`);
+                    updateLog(`Analyzing the tone of "${fileName}"...`);
                     result = await analyzeAudioTone(fileToAnalyze.file!);
                     break;
                 }
@@ -949,7 +930,7 @@ const App: React.FC = () => {
                     const lyrics = fc.args.lyrics as string;
                     const tone = fc.args.tone as string;
                     const singPrompt = `Sing the following lyrics in a ${tone} tone. Emphasize the emotion. Do not speak, sing.\n\nLyrics:\n${lyrics}`;
-                    updateBackgroundTask(taskId, `Warming up my vocal cords...`);
+                    updateLog(`Warming up my vocal cords...`);
                     try {
                         const audioBase64 = await synthesizeSpeech(singPrompt);
                         await playAudio(audioBase64);
@@ -1015,7 +996,7 @@ const App: React.FC = () => {
                     break;
                  case 'searchYouTubeAndAddToPlaylist': {
                     const query = fc.args.query as string;
-                    updateBackgroundTask(taskId, `Searching YouTube for "${query}"...`);
+                    updateLog(`Searching YouTube for "${query}"...`);
                     const newTrack = await searchYouTube(query);
                     if (newTrack) {
                         const newMediaItem: MediaItem = {
@@ -1056,7 +1037,7 @@ const App: React.FC = () => {
                     break;
                 case 'analyzeFileContents': {
                     const fileName = fc.args.fileName as string;
-                    updateBackgroundTask(taskId, `Analyzing code in "${fileName}"...`);
+                    updateLog(`Analyzing code in "${fileName}"...`);
 
                     const uploadedFile = uploadedFiles.find(f => f.name === fileName);
                     if (uploadedFile?.file) {
@@ -1087,22 +1068,22 @@ const App: React.FC = () => {
                 }
                 case 'searchWeb': {
                     const query = fc.args.query as string;
-                    updateBackgroundTask(taskId, `Searching web for: "${query}"...`);
+                    updateLog(`Searching web for: "${query}"...`);
                     result = await performWebSearch(query);
                     break;
                 }
                 case 'cloneWebsite': {
                     const url = fc.args.url as string;
-                    updateBackgroundTask(taskId, `Cloning ${url}...`);
+                    updateLog(`Cloning ${url}...`);
                     setIsDevConsoleOpen(true);
-                    setBrowserUrl(url); // Show the website in the dev console
+                    setBrowserUrl(url); 
                     await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 2000));
                     result = `Successfully cloned ${url} to local directory. You can see the site in the Dev Console.`;
                     break;
                 }
                 case 'browseUrl': {
                     const url = fc.args.url as string;
-                    updateBackgroundTask(taskId, `Opening browser to: ${url}...`);
+                    updateLog(`Opening browser to: ${url}...`);
                     setIsDevConsoleOpen(true);
                     setBrowserUrl(url);
                     result = `Browser is now navigating to ${url}.`;
@@ -1110,7 +1091,7 @@ const App: React.FC = () => {
                 }
                 case 'runCliCommand': {
                     const command = fc.args.command as string;
-                    updateBackgroundTask(taskId, `Running CLI command: "${command}"...`);
+                    updateLog(`Running CLI command: "${command}"...`);
                     setIsDevConsoleOpen(true);
                     result = await handleRunCliCommand(command);
                     break;
@@ -1118,15 +1099,15 @@ const App: React.FC = () => {
                 case 'runBrowserAutomation': {
                     const url = fc.args.url as string;
                     const task = fc.args.task as string;
-                    updateBackgroundTask(taskId, `Running browser automation on ${url}...`);
+                    updateLog(`Running browser automation on ${url}...`);
                     setIsDevConsoleOpen(true);
-                    setBrowserUrl(url); // Show the page being automated
+                    setBrowserUrl(url); 
                     await new Promise(resolve => setTimeout(resolve, 4000 + Math.random() * 2000));
                     result = `Sige Boss, I've completed the browser automation task on ${url}: "${task}". The results have been saved.`;
                     break;
                 }
                 case 'runPythonScript': {
-                     updateBackgroundTask(taskId, `Running python script...`);
+                     updateLog(`Running python script...`);
                       if (!isPyodideReady) {
                         result = "Python environment is not ready. Please wait a moment and try again.";
                         addNotification("Pyodide is still initializing.", "info");
@@ -1147,14 +1128,14 @@ const App: React.FC = () => {
                      result = `Email to ${fc.args.to} with subject "${fc.args.subject}" has been sent successfully.`;
                      break;
                 case 'executeComplexTask':
-                    updateBackgroundTask(taskId, `Executing complex task: ${fc.args.description}`);
+                    updateLog(`Executing complex task: ${fc.args.description}`);
                     await new Promise(resolve => setTimeout(resolve, 4000));
                     result = `Complex task "${fc.args.description}" completed successfully. All systems are nominal.`;
                     break;
                 case 'rollbackDeployment':
                 case 'runDeployment':
                     const env = fc.args.environment as string;
-                    updateBackgroundTask(taskId, `${fc.name === 'runDeployment' ? 'Deploying to' : 'Rolling back'} ${env}...`);
+                    updateLog(`${fc.name === 'runDeployment' ? 'Deploying to' : 'Rolling back'} ${env}...`);
                     await new Promise(resolve => setTimeout(resolve, 5000));
                     result = `Successfully completed ${fc.name} for ${env} environment.`;
                     break;
@@ -1165,10 +1146,13 @@ const App: React.FC = () => {
             result = `Error executing ${fc.name}: ${e.message}`;
         }
 
-
-        if (typeof result === 'string' && result.startsWith('Error')) addNotification(result, 'error');
-        updateBackgroundTask(taskId, typeof result === 'string' ? result : JSON.stringify(result));
-        removeBackgroundTask(taskId);
+        const resultString = typeof result === 'string' ? result : JSON.stringify(result);
+        if (resultString.toLowerCase().startsWith('error')) {
+            addNotification(resultString, 'error');
+            updateLog(`Error: ${fc.name} failed.`);
+        } else {
+            updateLog(`Success: ${fc.name} completed.`);
+        }
 
         if (source === 'voice' && sessionRef.current) {
             sessionRef.current.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result } } });
@@ -1181,7 +1165,7 @@ const App: React.FC = () => {
         }
 
         return result;
-    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles, currentConversationId, transcript, playlist, currentTrack, isPlaying, playTrack, handlePlayPause, handleNextTrack, handlePrevTrack, handleSaveMediaLibrary, playAudio, updateTranscript, handleRunCliCommand]);
+    }, [addNotification, uploadedFiles, updateLog, mediaLibrary, isPyodideReady, projectFiles, currentConversationId, transcript, playlist, currentTrack, isPlaying, playTrack, handlePlayPause, handleNextTrack, handlePrevTrack, handleSaveMediaLibrary, playAudio, updateTranscript, handleRunCliCommand]);
 
     const handleToolCall = useCallback(async (fc: FunctionCall, source: 'voice' | 'chat') => {
         const IMPACTFUL_TOOLS = [
@@ -1239,7 +1223,6 @@ const App: React.FC = () => {
                 synthesizeSpeech(cancelMsg).then(playAudio).catch(console.error);
             }
             
-            // Send a "cancelled" response to the model so it knows the tool call is finished.
             if (actionToExecute.source === 'voice' && sessionRef.current) {
                  sessionRef.current.sendToolResponse({ functionResponses: {
                      id: actionToExecute.toolCall.id,
@@ -1359,7 +1342,6 @@ const App: React.FC = () => {
         await endSession();
         const convo = await db.getConversation(id);
         if (convo) {
-            // This update call also triggers the last_accessed_at timestamp update via the DB trigger
             await db.updateConversationTitle(convo.id, convo.title);
             setCurrentConversationId(convo.id);
             setTranscript(convo.history);
@@ -1422,7 +1404,7 @@ const App: React.FC = () => {
             name: file.name,
             type: file.type,
             size: file.size,
-            file: file, // Store the actual File object for later use
+            file: file, 
         }));
 
         setUploadedFiles(prev => [...prev, ...newFiles]);
@@ -1430,29 +1412,25 @@ const App: React.FC = () => {
     };
 
     const handleMediaFileUpload = async (file: File) => {
-        const taskId = addBackgroundTask(`Uploading ${file.name}...`);
+        updateLog(`Uploading ${file.name}...`);
         try {
             const newMediaItem = await db.uploadMediaFile(file);
             if (newMediaItem) {
-                // Use a function for setMediaLibrary to get the latest state
                 setMediaLibrary(prevLibrary => {
                     const updatedLibrary = [...prevLibrary, newMediaItem];
-                    // Also update playlist and localStorage inside this updater
                     setPlaylist(updatedLibrary.filter(item => item.type === 'audio'));
                     const nonUploadedItems = updatedLibrary.filter(item => item.source !== 'upload');
                     localStorage.setItem('alex_media_library_links', JSON.stringify(nonUploadedItems));
                     return updatedLibrary;
                 });
-                updateBackgroundTask(taskId, `Successfully uploaded ${file.name}.`);
+                updateLog(`Successfully uploaded ${file.name}.`);
             } else {
                 throw new Error('Upload failed to return media item.');
             }
         } catch (error) {
             console.error('Media upload failed:', error);
             addNotification(`Failed to upload ${file.name}.`, 'error');
-            updateBackgroundTask(taskId, `Upload failed for ${file.name}.`);
-        } finally {
-            removeBackgroundTask(taskId);
+            updateLog(`Upload failed for ${file.name}.`);
         }
     };
 
@@ -1489,20 +1467,40 @@ const App: React.FC = () => {
         addNotification(`Mux settings updated.`);
     };
 
+    const handleSaveNeon = (neonConfig: { enabled: boolean; databaseUrl: string | null; }) => {
+        const newIntegrations = { ...integrations, neon: neonConfig };
+        setIntegrations(newIntegrations);
+        localStorage.setItem('alex_integrations', JSON.stringify(newIntegrations));
+        addNotification(`Neon DB settings updated.`);
+    };
+
+    const handleSaveUpstashRedis = (redisConfig: { enabled: boolean; url: string | null; token: string | null; }) => {
+        const newIntegrations = { ...integrations, upstashRedis: redisConfig };
+        setIntegrations(newIntegrations);
+        localStorage.setItem('alex_integrations', JSON.stringify(newIntegrations));
+        addNotification(`Upstash Redis settings updated.`);
+    };
+
+    const handleSaveUpstashSearch = (searchConfig: { enabled: boolean; url: string | null; token: string | null; }) => {
+        const newIntegrations = { ...integrations, upstashSearch: searchConfig };
+        setIntegrations(newIntegrations);
+        localStorage.setItem('alex_integrations', JSON.stringify(newIntegrations));
+        addNotification(`Upstash Search settings updated.`);
+    };
+
     const runCliAgentAnalysis = useCallback(async (newFiles: ProjectFile[]) => {
         if (newFiles.length === 0) return;
 
         addNotification('New project files detected. CLI agent starting analysis...', 'info');
-        const taskId = addBackgroundTask('CLI Agent: Initializing...');
-
+        updateLog('CLI Agent: Initializing...');
         await new Promise(resolve => setTimeout(resolve, 1500));
-        updateBackgroundTask(taskId, `CLI Agent: Creating project directory...`);
+        updateLog(`CLI Agent: Creating project directory...`);
         await new Promise(resolve => setTimeout(resolve, 2000));
 
         let agentReport = "#### **CLI Agent Auto-Analysis Report**\n\n";
 
         for (const file of newFiles) {
-            updateBackgroundTask(taskId, `CLI Agent: Analyzing ${file.name}...`);
+            updateLog(`CLI Agent: Analyzing ${file.name}...`);
             
             const isTextFile = file.type.startsWith('text/') || 
                                ['application/javascript', 'application/json', 'application/typescript', 'application/xml', 'text/x-python'].includes(file.type) ||
@@ -1523,8 +1521,7 @@ const App: React.FC = () => {
         const summaryMessage = "Sige Boss, tapos na ang analysis ng agent. Yung detailed report, nilagay ko na sa transcript para ma-review mo.";
         updateTranscript('alex', summaryMessage);
 
-        updateBackgroundTask(taskId, `CLI Agent: Project analysis complete.`);
-        removeBackgroundTask(taskId);
+        updateLog(`CLI Agent: Project analysis complete.`);
         
         if (agentStatus !== 'idle' && agentStatus !== 'connecting' && agentStatus !== 'verifying' && agentStatus !== 'recalling') {
             try {
@@ -1535,7 +1532,7 @@ const App: React.FC = () => {
             }
         }
 
-    }, [addBackgroundTask, updateBackgroundTask, removeBackgroundTask, addNotification, updateTranscript, playAudio, agentStatus]);
+    }, [updateLog, addNotification, updateTranscript, playAudio, agentStatus]);
 
 
     const handleSaveProjectFiles = (files: ProjectFile[]) => {
@@ -1550,7 +1547,6 @@ const App: React.FC = () => {
         }
     };
     
-    // --- YouTube Player Setup ---
     const onPlayerStateChange = useCallback((event: any) => {
         if (progressIntervalRef.current) {
             clearInterval(progressIntervalRef.current);
@@ -1624,7 +1620,6 @@ const App: React.FC = () => {
         }
     }, [isYouTubeApiReady, onPlayerStateChange]);
     
-    // --- Audio Player Event Listeners ---
     useEffect(() => {
         const audioEl = audioPlayerRef.current;
         if (!audioEl) return;
@@ -1658,7 +1653,6 @@ const App: React.FC = () => {
         };
     }, [handleNextTrack]);
 
-    // --- Media Session API for Background Playback ---
     useEffect(() => {
         if ('mediaSession' in navigator) {
             if (currentTrack) {
@@ -1666,7 +1660,6 @@ const App: React.FC = () => {
                     title: currentTrack.name,
                     artist: currentTrack.source === 'youtube' ? 'YouTube' : 'Library',
                     album: "Alex's Playlist",
-                    // A placeholder artwork
                     artwork: [
                         { src: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M9 18V5l12-2v13M12 18V5%22 fill=%22none%22 stroke=%22white%22 stroke-width=%222%22/%3E%3C/svg%3E', type: 'image/svg+xml', sizes: '512x512' },
                     ]
@@ -1674,14 +1667,12 @@ const App: React.FC = () => {
 
                 navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
                 
-                // Set up action handlers for lock screen/notification controls
                 navigator.mediaSession.setActionHandler('play', handlePlayPause);
                 navigator.mediaSession.setActionHandler('pause', handlePlayPause);
                 navigator.mediaSession.setActionHandler('nexttrack', playlist.length > 1 ? handleNextTrack : null);
                 navigator.mediaSession.setActionHandler('previoustrack', playlist.length > 1 ? handlePrevTrack : null);
 
             } else {
-                // Clear metadata and handlers when no track is active
                 navigator.mediaSession.metadata = null;
                 navigator.mediaSession.playbackState = 'none';
                 navigator.mediaSession.setActionHandler('play', null);
@@ -1691,7 +1682,6 @@ const App: React.FC = () => {
             }
         }
         
-        // Cleanup function
         return () => {
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.metadata = null;
@@ -1754,6 +1744,9 @@ const App: React.FC = () => {
                     onSaveIntegration={handleSaveIntegration}
                     onSaveStoryAuth={handleSaveStoryAuth}
                     onSaveMux={handleSaveMux}
+                    onSaveNeon={handleSaveNeon}
+                    onSaveUpstashRedis={handleSaveUpstashRedis}
+                    onSaveUpstashSearch={handleSaveUpstashSearch}
                     mediaLibrary={mediaLibrary}
                     onSaveMediaLibrary={handleSaveMediaLibrary}
                     onMediaFileUpload={handleMediaFileUpload}
@@ -1816,15 +1809,20 @@ const App: React.FC = () => {
                 </div>
 
                 <header className="fixed top-4 left-4 right-4 z-10 flex items-center justify-between">
-                     <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Open Conversation History">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-                    </button>
-                    <div className="flex items-center gap-2">
-                        {backgroundTasks.map(task => (
-                             <div key={task.id} className="text-xs px-3 py-1.5 rounded-full bg-black/50 backdrop-blur-md border border-white/10 animate-fade-in-out-quick">
-                                {task.message}
-                            </div>
-                        ))}
+                     <div className="flex items-center gap-1">
+                        <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Open Conversation History">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                        </button>
+                        <button onClick={handleSwitchToChat} className="p-2 rounded-full hover:bg-white/10 transition-colors active:scale-95" aria-label="Switch to Chat Mode">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                        </button>
+                     </div>
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                        {logMessage && (
+                            <p style={{fontSize: '10px'}} className="font-mono text-lime-400 animate-fade-in-out-quick whitespace-nowrap px-3 py-1 bg-black/30 rounded-full">
+                                Alex System $ {logMessage}
+                            </p>
+                        )}
                     </div>
                     <div className="flex items-center gap-2">
                          <button onClick={() => setIsDevConsoleOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Open Developer Console">
@@ -1838,8 +1836,16 @@ const App: React.FC = () => {
 
                 <main className="flex-1 flex items-center justify-center p-4">
                     <div className="w-[300px] h-[300px] flex items-center justify-center relative">
-                        <button onClick={toggleSession} className="w-full h-full relative group">
-                            <Luto status={agentStatus} analyserNode={currentAnalyser} />
+                        <button onClick={toggleSession} className="w-full h-full relative group rounded-full transition-all duration-300 ease-in-out border-2 border-dashed border-transparent hover:border-white/20">
+                            <div className={`transition-opacity duration-300 ${agentStatus === 'idle' ? 'opacity-0' : 'opacity-100'}`}>
+                                <Luto status={agentStatus} analyserNode={currentAnalyser} />
+                            </div>
+                            {agentStatus === 'idle' && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-white/40 group-hover:text-white/80 transition-all duration-300 ease-in-out transform group-hover:scale-105">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                                    <p className="mt-2 text-sm font-semibold tracking-wider uppercase">Tap to Speak</p>
+                                </div>
+                            )}
                         </button>
                     </div>
                 </main>
@@ -1856,38 +1862,33 @@ const App: React.FC = () => {
                              {isOutputMuted ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>}
                         </button>
                         <button onClick={handleToggleVideo} className={`p-3 rounded-full transition-colors ${isVideoEnabled ? 'bg-blue-500' : 'hover:bg-white/10'}`} aria-label={isVideoEnabled ? "Disable Video" : "Enable Video"}>
-                             {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>}
+                             {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2l3-3h6l3 3h2a2 2 0 0 1 2 2v2"></path><line x1="2" y1="22" x2="22" y2="2"></line><circle cx="10.5" cy="10.5" r="4.5"></circle></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>}
                         </button>
-                         <button onClick={() => setIsMusicStudioOpen(true)} className="p-3 rounded-full hover:bg-white/10 transition-colors" aria-label="Open Music Studio">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                         <button onClick={handleToggleScreenShare} className={`p-3 rounded-full transition-colors ${isScreenSharing ? 'bg-blue-500' : 'hover:bg-white/10'}`} aria-label={isScreenSharing ? "Stop Sharing" : "Share Screen"}>
+                             {isScreenSharing ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2.27 2.27 2 2m20 20-2.27-2.27M15.5 15.5 15 15l-3-2-7 4-1.5-1.5"></path><path d="m2 2 20 20"></path><path d="M8.5 8.5 10 7l4 2.5 2-1"></path><path d="M17 17a2 2 0 0 1-2-2V9a2 2 0 0 0-2-2H7"></path><path d="M22 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5"></path></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"></path><path d="m16 12-4-2-4 2"></path><path d="M12 22v-8"></path><path d="m17 18 5-3-5-3v6Z"></path></svg>}
                         </button>
-                         <button onClick={() => setIsVideoLibraryOpen(true)} className="p-3 rounded-full hover:bg-white/10 transition-colors" aria-label="Open Video Library">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>
+                         <button onClick={handleToggleRecording} className={`p-3 rounded-full transition-colors ${isRecording ? 'bg-red-500 animate-pulse' : 'hover:bg-white/10'}`} aria-label={isRecording ? "Stop Recording" : "Start Recording"}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="currentColor"><circle cx="12" cy="12" r="10"></circle></svg>
                         </button>
-                        <button onClick={handleToggleRecording} className={`p-3 rounded-full transition-colors ${isRecording ? 'bg-red-500 animate-pulse-record' : 'hover:bg-white/10'}`} aria-label={isRecording ? "Stop Recording" : "Start Recording Idea"}>
-                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
+                         <button onClick={handleToggleCc} className={`p-3 rounded-full transition-colors ${showCc ? 'bg-blue-500' : 'hover:bg-white/10'}`} aria-label="Toggle Closed Captions">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3Z"></path><path d="M7 12h2"></path><path d="M15 12h2"></path></svg>
                         </button>
-                        <button onClick={handleToggleCc} className={`p-3 rounded-full transition-colors ${showCc ? 'bg-blue-500' : 'hover:bg-white/10'}`} aria-label={showCc ? "Hide Captions" : "Show Captions"}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-2"></path><path d="M6 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2"></path><path d="M12 12h.01"></path><path d="M17 12h.01"></path><path d="M7 12h.01"></path></svg>
-                        </button>
-                         <button onClick={handleSwitchToChat} className="p-3 rounded-full hover:bg-white/10 transition-colors" aria-label="Switch to Chat Mode">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                         <button onClick={() => setIsVideoLibraryOpen(true)} className="p-3 rounded-full hover:bg-white/10 transition-colors active:scale-95" aria-label="Open Video Library">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>
                         </button>
                     </div>
+                     <MusicPlayer 
+                        currentTrack={currentTrack}
+                        isPlaying={isPlaying}
+                        progress={trackProgress}
+                        onPlayPause={handlePlayPause}
+                        onNext={handleNextTrack}
+                        onPrev={handlePrevTrack}
+                        onSeek={handleSeek}
+                    />
                 </footer>
             </div>
-            
-            <MusicPlayer 
-                currentTrack={currentTrack}
-                isPlaying={isPlaying}
-                progress={trackProgress}
-                onPlayPause={handlePlayPause}
-                onNext={handleNextTrack}
-                onPrev={handlePrevTrack}
-                onSeek={handleSeek}
-            />
         </div>
     );
 };
-
 export default App;
