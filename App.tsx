@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, FunctionCall, Chat } from '@google/genai';
 import { Luto, MiniLuto } from './components/Orb';
@@ -426,12 +427,21 @@ const App: React.FC = () => {
 
     const checkAndGenerateTitle = useCallback(async (newHistory: ChatMessage[]) => {
         const currentConvo = conversations.find(c => c.id === currentConversationId);
+        // To prevent spamming the API on every partial transcript (which causes rate limit errors),
+        // only generate a title if it's the default, there's at least one user message
+        // and one agent message, and the last message is from Alex. This ensures we only
+        // try to generate a title after the first full exchange.
         if (currentConvo && currentConvo.title === 'New Conversation' && newHistory.length >= 2) {
-             const title = await generateConversationTitle(newHistory);
-             if (currentConversationId) {
-                 await db.updateConversationTitle(currentConversationId, title);
-                 setConversations(convos => convos.map(c => c.id === currentConversationId ? {...c, title} : c));
-             }
+            const lastMessage = newHistory[newHistory.length - 1];
+            const secondLastMessage = newHistory[newHistory.length - 2];
+            
+            if (lastMessage.speaker === 'alex' && secondLastMessage.speaker === 'user') {
+                 const title = await generateConversationTitle(newHistory);
+                 if (currentConversationId) {
+                     await db.updateConversationTitle(currentConversationId, title);
+                     setConversations(convos => convos.map(c => c.id === currentConversationId ? {...c, title} : c));
+                 }
+            }
         }
     }, [conversations, currentConversationId]);
 
@@ -817,6 +827,14 @@ const App: React.FC = () => {
                     updateBackgroundTask(taskId, `Cloning ${url}...`);
                     await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 2000));
                     result = `Successfully cloned ${url} to local directory.`;
+                    break;
+                }
+                case 'runBrowserAutomation': {
+                    const url = fc.args.url as string;
+                    const task = fc.args.task as string;
+                    updateBackgroundTask(taskId, `Running browser automation on ${url}...`);
+                    await new Promise(resolve => setTimeout(resolve, 4000 + Math.random() * 2000));
+                    result = `Sige Boss, I've completed the browser automation task on ${url}: "${task}". The results have been saved.`;
                     break;
                 }
                 case 'runPythonScript': {
@@ -1427,7 +1445,7 @@ const App: React.FC = () => {
                              {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>}
                         </button>
                          <button onClick={() => setIsMusicStudioOpen(true)} className="p-3 rounded-full hover:bg-white/10 transition-colors" aria-label="Open Music Studio">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
                         </button>
                         <button onClick={handleToggleRecording} className={`p-3 rounded-full transition-colors ${isRecording ? 'bg-red-500 animate-pulse-record' : 'hover:bg-white/10'}`} aria-label={isRecording ? "Stop Recording" : "Start Recording Idea"}>
                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>

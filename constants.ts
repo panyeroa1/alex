@@ -426,6 +426,24 @@ export const DEV_TOOLS: FunctionDeclaration[] = [
         },
     },
     {
+        name: 'runBrowserAutomation',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Uses a headless browser (Playwright) to perform an automated task on a website, like E2E testing, scraping, or taking screenshots.',
+            properties: {
+                url: {
+                    type: Type.STRING,
+                    description: 'The full URL of the website to automate.',
+                },
+                task: {
+                    type: Type.STRING,
+                    description: 'A clear, natural language description of the task to perform on the page. Examples: "Take a screenshot of the hero section", "Find all h2 tags and return their text", "Fill the login form with username \'admin\' and password \'password123\' and click submit".'
+                }
+            },
+            required: ['url', 'task'],
+        },
+    },
+    {
         name: 'runPythonScript',
         parameters: {
             type: Type.OBJECT,
