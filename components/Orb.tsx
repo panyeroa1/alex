@@ -15,6 +15,8 @@ const MiniLuto: React.FC<{ status: AgentStatus }> = ({ status }) => {
                 return 'bg-blue-400 animate-pulse-mini-fast';
             case 'executing':
                  return 'bg-amber-400 animate-pulse-mini-fast';
+            case 'recalling':
+                return 'bg-purple-400 animate-pulse-mini';
             case 'connecting':
             case 'verifying':
                 return 'bg-yellow-400 animate-pulse-mini';
@@ -37,6 +39,7 @@ export const Luto: React.FC<LutoProps> = ({ status }) => {
     const isExecuting = status === 'executing';
     const isConnecting = status === 'connecting';
     const isVerifying = status === 'verifying';
+    const isRecalling = status === 'recalling';
 
     const getEyeClass = () => {
         if (isListening) return 'animate-luto-eye-listen';
@@ -107,9 +110,9 @@ export const Luto: React.FC<LutoProps> = ({ status }) => {
                     <circle cx="110" cy="15" r="3" fill="#38BDF8" />
                 </g>
 
-                 {/* Chest Light (Connecting/Verifying) */}
-                 {(isVerifying || isConnecting) && (
-                     <circle cx="75" cy="95" r="5" fill="#facc15" filter="url(#luto-glow)">
+                 {/* Chest Light (Connecting/Verifying/Recalling) */}
+                 {(isVerifying || isConnecting || isRecalling) && (
+                     <circle cx="75" cy="95" r="5" fill={isRecalling ? '#c084fc' : '#facc15'} filter="url(#luto-glow)">
                         <animate attributeName="r" from="5" to="12" dur="1.2s" begin="0s" repeatCount="indefinite" />
                         <animate attributeName="opacity" from="1" to="0" dur="1.2s" begin="0s" repeatCount="indefinite" />
                      </circle>
@@ -119,7 +122,7 @@ export const Luto: React.FC<LutoProps> = ({ status }) => {
             {status === 'idle' && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="w-16 h-16 bg-blue-500 rounded-full opacity-0 group-hover:opacity-50 transition-opacity duration-300 flex items-center justify-center">
-                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
+                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
                     </div>
                 </div>
             )}

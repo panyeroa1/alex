@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, FunctionCall, Chat } from '@google/genai';
 import { Luto, MiniLuto } from './components/Orb';
 import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, BackgroundTask, IntegrationCredentials, MediaItem, ProjectFile } from './types';
-import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData, analyzeCode } from './services/geminiService';
+import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData, analyzeCode, summarizeConversationsForMemory, generateConversationSummary, performWebSearch } from './services/geminiService';
 import * as db from './services/supabaseService';
 import { DEFAULT_SYSTEM_PROMPT, DEV_TOOLS } from './constants';
 import { Sidebar } from './components/Sidebar';
@@ -459,6 +459,17 @@ const App: React.FC = () => {
 
         try {
             switch (fc.name) {
+                 case 'saveMemory': {
+                    if (!currentConversationId) {
+                        result = "Error: No active conversation to save.";
+                        break;
+                    }
+                    updateBackgroundTask(taskId, `Saving notes to long-term memory...`);
+                    const summary = await generateConversationSummary(transcript);
+                    await db.updateConversationSummary(currentConversationId, summary);
+                    result = `Sige Boss, na-save ko na sa memory ko.`;
+                    break;
+                }
                  case 'listPipelines':
                     result = "Available pipelines: production-deploy, staging-deploy, run-tests.";
                     break;
@@ -550,9 +561,12 @@ const App: React.FC = () => {
                     else result = `Action '${fc.name}' on file '${fileName}' was successful.`;
                     break;
                 }
-                case 'searchWeb':
-                    result = `Simulated web search for "${fc.args.query}": The capital of the Philippines is Manila. The current president is Bongbong Marcos.`;
+                case 'searchWeb': {
+                    const query = fc.args.query as string;
+                    updateBackgroundTask(taskId, `Searching web for: "${query}"...`);
+                    result = await performWebSearch(query);
                     break;
+                }
                 case 'cloneWebsite': {
                     const url = fc.args.url as string;
                     updateBackgroundTask(taskId, `Cloning ${url}...`);
@@ -603,7 +617,7 @@ const App: React.FC = () => {
              setAgentStatus('listening');
         }
         return result;
-    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles]);
+    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles, currentConversationId, transcript]);
 
     const endSession = useCallback(async () => {
         if (isRecording) {
@@ -628,12 +642,16 @@ const App: React.FC = () => {
 
     const startSession = useCallback(async () => {
         try {
+            setAgentStatus('recalling');
+            const recentConvos = conversations.slice(0, 5);
+            const memoryContext = await summarizeConversationsForMemory(recentConvos);
+            
             setAgentStatus('verifying');
             await new Promise(resolve => setTimeout(resolve, 1500));
 
             setAgentStatus('connecting');
             const { session, audioStream, toggleOutputMute, outputAudioContext, outputGainNode, inputAnalyser, outputAnalyser } = await connectToLiveSession({
-                systemInstruction: systemPrompt,
+                systemInstruction: systemPrompt + memoryContext,
                 tools: [{ functionDeclarations: DEV_TOOLS }],
                 videoElement: isVideoEnabled ? videoRef.current : null,
                 history: transcript,
@@ -658,7 +676,7 @@ const App: React.FC = () => {
             addNotification('Failed to connect. Check permissions.', 'error');
             setAgentStatus('idle');
         }
-    }, [addNotification, handleToolCall, updateTranscript, endSession, isVideoEnabled, transcript, systemPrompt]);
+    }, [addNotification, handleToolCall, updateTranscript, endSession, isVideoEnabled, transcript, systemPrompt, conversations]);
     
     const handleToggleRecording = useCallback(() => {
         if (isRecording) {
@@ -721,6 +739,8 @@ const App: React.FC = () => {
         await endSession();
         const convo = await db.getConversation(id);
         if (convo) {
+            // This update call also triggers the last_accessed_at timestamp update via the DB trigger
+            await db.updateConversationTitle(convo.id, convo.title);
             setCurrentConversationId(convo.id);
             setTranscript(convo.history);
             setUploadedFiles([]);
@@ -743,7 +763,11 @@ const App: React.FC = () => {
 
     const handleSendTextMessage = async (message: string) => {
         if (!chatRef.current) {
-             chatRef.current = await startChatSession(transcript, systemPrompt);
+            setAgentStatus('recalling');
+            const recentConvos = conversations.slice(0, 5);
+            const memoryContext = await summarizeConversationsForMemory(recentConvos);
+            chatRef.current = await startChatSession(transcript, systemPrompt + memoryContext);
+            setAgentStatus('idle');
         }
         updateTranscript('user', message);
         
@@ -849,7 +873,7 @@ const App: React.FC = () => {
         updateBackgroundTask(taskId, `CLI Agent: Project analysis complete.`);
         removeBackgroundTask(taskId);
         
-        if (agentStatus !== 'idle' && agentStatus !== 'connecting' && agentStatus !== 'verifying') {
+        if (agentStatus !== 'idle' && agentStatus !== 'connecting' && agentStatus !== 'verifying' && agentStatus !== 'recalling') {
             try {
                 const audioBase64 = await synthesizeSpeech(summaryMessage);
                 await playAudio(audioBase64);
@@ -976,7 +1000,7 @@ const App: React.FC = () => {
 
                 <main className="absolute inset-0 flex items-center justify-center">
                     <div className="w-64 h-64 md:w-80 md:h-80 z-10">
-                        <button onClick={toggleSession} disabled={agentStatus === 'connecting' || agentStatus === 'verifying'} className="w-full h-full rounded-full transition-transform duration-300 ease-in-out hover:scale-105 focus:outline-none relative disabled:opacity-50 disabled:scale-100 group" aria-label={sessionRef.current ? 'Interaction in progress' : 'Start Session'}>
+                        <button onClick={toggleSession} disabled={agentStatus === 'connecting' || agentStatus === 'verifying' || agentStatus === 'recalling'} className="w-full h-full rounded-full transition-transform duration-300 ease-in-out hover:scale-105 focus:outline-none relative disabled:opacity-50 disabled:scale-100 group" aria-label={sessionRef.current ? 'Interaction in progress' : 'Start Session'}>
                             <Luto status={agentStatus} analyserNode={currentAnalyser} />
                         </button>
                     </div>

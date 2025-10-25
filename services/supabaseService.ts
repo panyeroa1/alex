@@ -16,7 +16,7 @@ export const getConversations = async (): Promise<Conversation[]> => {
     const { data, error } = await supabase
         .from('conversations')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('last_accessed_at', { ascending: false });
 
     if (error) {
         console.error("Error fetching conversations:", error);
@@ -47,9 +47,16 @@ export const createConversation = async (): Promise<Conversation> => {
         throw new Error("User not authenticated, cannot create conversation.");
     }
 
+    const newConversation = {
+        title: 'New Conversation',
+        history: [],
+        user_id: user.id,
+        last_accessed_at: new Date().toISOString(),
+    };
+
     const { data, error } = await supabase
         .from('conversations')
-        .insert({ title: 'New Conversation', history: [], user_id: user.id })
+        .insert(newConversation)
         .select()
         .single();
     
@@ -64,7 +71,7 @@ export const createConversation = async (): Promise<Conversation> => {
 export const saveConversationHistory = async (id: string, history: ChatMessage[]): Promise<void> => {
     const { error } = await supabase
         .from('conversations')
-        .update({ history })
+        .update({ history, last_accessed_at: new Date().toISOString() })
         .eq('id', id);
 
     if (error) {
@@ -75,11 +82,22 @@ export const saveConversationHistory = async (id: string, history: ChatMessage[]
 export const updateConversationTitle = async (id: string, title: string): Promise<void> => {
     const { error } = await supabase
         .from('conversations')
-        .update({ title })
+        .update({ title, last_accessed_at: new Date().toISOString() })
         .eq('id', id);
         
     if (error) {
         console.error("Error updating title:", error);
+    }
+};
+
+export const updateConversationSummary = async (id: string, summary: string): Promise<void> => {
+    const { error } = await supabase
+        .from('conversations')
+        .update({ summary, last_accessed_at: new Date().toISOString() })
+        .eq('id', id);
+
+    if (error) {
+        console.error("Error updating summary:", error);
     }
 };
 
@@ -107,7 +125,7 @@ export const uploadRecording = async (conversationId: string, audioBlob: Blob): 
     if (publicUrl) {
         const { error: updateError } = await supabase
             .from('conversations')
-            .update({ recording_url: publicUrl })
+            .update({ recording_url: publicUrl, last_accessed_at: new Date().toISOString() })
             .eq('id', conversationId);
         
         if (updateError) {

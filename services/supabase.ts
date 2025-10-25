@@ -1,5 +1,6 @@
 
 
+
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
 import { Conversation, ChatMessage } from '../types';
@@ -19,12 +20,16 @@ export type Database = {
           history: ChatMessage[];
           user_id: string;
           recording_url?: string | null;
+          summary?: string | null;
+          last_accessed_at?: string;
         };
         Update: {
           title?: string;
           // FIX: Using `ChatMessage[]` instead of `any` to correctly type the jsonb `history` column.
           history?: ChatMessage[];
           recording_url?: string | null;
+          summary?: string | null;
+          last_accessed_at?: string;
         };
       };
     };

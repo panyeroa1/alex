@@ -119,6 +119,20 @@ FINAL REMINDER
 
 export const DEV_TOOLS: FunctionDeclaration[] = [
     {
+        name: 'saveMemory',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Saves a summary of the current conversation or a specific topic to long-term memory for future recall.',
+            properties: {
+                notes: {
+                    type: Type.STRING,
+                    description: 'A brief note about what is important to remember from the current context. E.g., "The user decided on the blue design.".',
+                },
+            },
+            required: ['notes'],
+        },
+    },
+    {
         name: 'generateImage',
         parameters: {
             type: Type.OBJECT,

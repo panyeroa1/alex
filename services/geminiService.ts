@@ -1,5 +1,5 @@
 import { GoogleGenAI, LiveServerMessage, Modality, Blob, FunctionDeclaration, FunctionCall, Chat, Part, GenerateContentResponse } from "@google/genai";
-import { ChatMessage } from "../types";
+import { ChatMessage, Conversation } from "../types";
 
 export interface LiveSession {
     close(): void;
@@ -122,7 +122,7 @@ export async function connectToLiveSession(
     };
 
     const historyText = config.history.map(m => `${m.speaker === 'user' ? 'Master E' : 'Alex'}: ${m.text}`).join('\n');
-    const contextInstruction = historyText ? `\n\n--- PREVIOUS CONVERSATION ---\n${historyText}` : '';
+    const contextInstruction = historyText ? `\n\n--- CURRENT CONVERSATION ---\n${historyText}` : '';
 
     const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
@@ -333,6 +333,83 @@ export async function generateConversationTitle(history: ChatMessage[]): Promise
         return "New Conversation";
     }
 }
+
+export async function generateConversationSummary(history: ChatMessage[]): Promise<string> {
+    if (history.length === 0) return "";
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const historyText = history.map(m => `${m.speaker}: ${m.text}`).join('\n');
+    const prompt = `Summarize the key points, decisions, and action items from this conversation into a concise paragraph. This is for your long-term memory.
+
+    CONVERSATION:
+    ${historyText}
+    
+    SUMMARY:`;
+
+    try {
+        const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+        return response.text.trim();
+    } catch (error) {
+        console.error("Failed to generate summary:", error);
+        return "Could not generate summary.";
+    }
+}
+
+export async function summarizeConversationsForMemory(conversations: Conversation[]): Promise<string> {
+    if (conversations.length === 0) return "";
+
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const context = conversations
+        .map(c => `Conversation about "${c.title}" (last accessed ${new Date(c.last_accessed_at).toLocaleString()}):\nSummary: ${c.summary || 'No summary available.'}`)
+        .join('\n\n---\n\n');
+
+    const prompt = `You are Alex, an AI agent, preparing for a new session with your boss, Master E. Below is a summary of your last few conversations. Review it to refresh your memory on recent projects and discussions. Synthesize these points into a brief, consolidated paragraph of your key takeaways. This is for your internal context only; do not mention this memory recall process to the user unless they ask.
+
+    PAST CONVERSATIONS:
+    ${context}
+    
+    CONSOLIDATED SUMMARY OF KEY TAKEAWAYS:`;
+    
+    try {
+        const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+        return `\n\n--- LONG-TERM MEMORY CONTEXT ---\nHere is a summary of our recent conversations:\n${response.text}\n--- END OF MEMORY CONTEXT ---`;
+    } catch (error) {
+        console.error("Failed to summarize conversations for memory:", error);
+        return "\n\n--- LONG-TERM MEMORY CONTEXT ---\nCould not load recent conversation summaries.\n--- END OF MEMORY CONTEXT ---";
+    }
+}
+
+
+export async function performWebSearch(query: string): Promise<string> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+        const response = await ai.models.generateContent({
+           model: "gemini-2.5-flash",
+           contents: `Boss, please search for this: ${query}`,
+           config: {
+             tools: [{googleSearch: {}}],
+           },
+        });
+
+        let resultText = response.text;
+        const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+
+        if (groundingChunks && groundingChunks.length > 0) {
+            const sources = groundingChunks
+                .map((chunk: any) => chunk.web?.uri || chunk.maps?.uri)
+                .filter(Boolean);
+            
+            if (sources.length > 0) {
+                const uniqueSources = [...new Set(sources)];
+                resultText += `\n\n**Sources:**\n- ${uniqueSources.join('\n- ')}`;
+            }
+        }
+        return resultText;
+    } catch (error) {
+        console.error("Web search failed:", error);
+        return "Sorry Boss, I couldn't search the web right now.";
+    }
+}
+
 
 export async function analyzeAudio(audioBlob: globalThis.Blob): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });

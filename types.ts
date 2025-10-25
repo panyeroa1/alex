@@ -1,4 +1,4 @@
-export type AgentStatus = 'idle' | 'verifying' | 'connecting' | 'listening' | 'speaking' | 'executing';
+export type AgentStatus = 'idle' | 'verifying' | 'connecting' | 'listening' | 'speaking' | 'executing' | 'recalling';
 
 export interface Notification {
     id: number;
@@ -27,8 +27,13 @@ export interface Conversation {
     title: string;
     history: ChatMessage[];
     created_at: string; // Supabase timestamp with timezone
-    user_id?: string | null;
-    recording_url?: string | null;
+    last_accessed_at: string;
+    summary: string | null;
+    // FIX: Changed user_id to be required, as it's likely a non-nullable foreign key.
+    // The optional '?' was causing type conflicts with the explicit Insert/Update types in Supabase.
+    user_id: string;
+    // FIX: Changed recording_url to be non-optional but nullable. A database column will always be present in a row, even if its value is null.
+    recording_url: string | null;
 }
 
 export interface BackgroundTask {
