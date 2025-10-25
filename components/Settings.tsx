@@ -104,7 +104,9 @@ export const Settings: React.FC<SettingsProps> = ({
 
         const newProjectFiles: ProjectFile[] = [...projectFiles];
 
-        for (const file of Array.from(files)) {
+        // FIX: The type inference for `Array.from(FileList)` seems to be failing, resulting in `file` being typed as `unknown`.
+        // Explicitly providing the `File` type to `Array.from` ensures `file` is correctly typed, resolving property access errors.
+        for (const file of Array.from<File>(files)) {
             // Avoid duplicates
             if (projectFiles.some(pf => pf.name === file.name)) {
                 console.warn(`File ${file.name} already exists. Skipping.`);

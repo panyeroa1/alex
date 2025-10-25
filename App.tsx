@@ -1,12 +1,8 @@
-
-
-
-
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, FunctionCall, Chat } from '@google/genai';
 import { Luto, MiniLuto } from './components/Orb';
 import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, BackgroundTask, IntegrationCredentials, MediaItem, ProjectFile } from './types';
-import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData, analyzeCode, summarizeConversationsForMemory, generateConversationSummary, performWebSearch, searchYouTube, generateLyrics, analyzeAudioTone } from './services/geminiService';
+import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData, analyzeCode, summarizeConversationsForMemory, generateConversationSummary, performWebSearch, searchYouTube, generateLyrics, analyzeAudioTone, blobToBase64 } from './services/geminiService';
 import * as db from './services/supabaseService';
 import { DEFAULT_SYSTEM_PROMPT, DEV_TOOLS } from './constants';
 import { Sidebar } from './components/Sidebar';
@@ -729,7 +725,30 @@ const App: React.FC = () => {
                 case 'listFiles':
                     result = uploadedFiles.length > 0 ? `Current files: ${uploadedFiles.map(f => f.name).join(', ')}` : "No files have been uploaded yet.";
                     break;
-                case 'analyzeFileContents':
+                case 'analyzeFileContents': {
+                    const fileName = fc.args.fileName as string;
+                    updateBackgroundTask(taskId, `Analyzing code in "${fileName}"...`);
+
+                    const uploadedFile = uploadedFiles.find(f => f.name === fileName);
+                    if (uploadedFile?.file) {
+                        try {
+                            const content = await blobToBase64(uploadedFile.file);
+                            result = await analyzeCode(uploadedFile.name, content);
+                        } catch (e: any) {
+                            result = `Error reading file ${fileName}: ${e.message}`;
+                        }
+                        break;
+                    }
+                    
+                    const projectFile = projectFiles.find(f => f.name === fileName);
+                    if (projectFile) {
+                        result = await analyzeCode(projectFile.name, projectFile.content);
+                        break;
+                    }
+                    
+                    result = `Error: File '${fileName}' not found, Boss. Paki-upload muna sa chat o i-save sa project settings.`;
+                    break;
+                }
                 case 'extractZipArchive':
                 case 'writeFile': {
                     const fileName = fc.args.fileName as string;

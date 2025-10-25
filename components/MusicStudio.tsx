@@ -112,6 +112,12 @@ export const MusicStudio: React.FC<MusicStudioProps> = ({
             setIsAnalyzing(false);
         }
     };
+
+    const renderAnalysisResult = (text: string) => {
+        return text
+            .replace(/\*\*(.*?):\*\*/g, '<h4 class="text-sm font-semibold text-blue-300 mt-3 mb-1">$1</h4>')
+            .replace(/\n/g, '<br />');
+    };
     
     if (!isOpen && !isClosing) return null;
 
@@ -170,10 +176,24 @@ export const MusicStudio: React.FC<MusicStudioProps> = ({
                             <button onClick={handleAnalyze} disabled={isAnalyzing || !audioFile} className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-full transition-all flex items-center justify-center gap-2">
                                 {isAnalyzing ? <LoadingSpinner /> : 'Analyze Tone'}
                             </button>
-                            <div className="flex-1 bg-black/30 p-4 rounded-lg border border-white/20 min-h-[200px]">
-                                {isAnalyzing && <p className="text-white/60 animate-pulse">Analyzing, Boss...</p>}
-                                {analysisResult && <pre className="text-white/90 whitespace-pre-wrap font-sans text-sm">{analysisResult}</pre>}
-                                {!analysisResult && !isAnalyzing && <p className="text-white/50">Analysis results will appear here.</p>}
+                            <div className="flex-1 bg-black/30 p-4 rounded-lg border border-white/20 min-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent">
+                                {isAnalyzing && (
+                                    <div className="flex flex-col items-center justify-center h-full text-white/60 gap-3">
+                                        <LoadingSpinner />
+                                        <p className="animate-pulse">Analyzing the track, Boss...</p>
+                                    </div>
+                                )}
+                                {analysisResult && (
+                                    <div
+                                        className="text-white/90 font-sans text-sm leading-relaxed"
+                                        dangerouslySetInnerHTML={{ __html: renderAnalysisResult(analysisResult) }}
+                                    />
+                                )}
+                                {!analysisResult && !isAnalyzing && (
+                                    <div className="flex items-center justify-center h-full text-white/50">
+                                        <p>Analysis results will appear here.</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

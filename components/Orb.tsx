@@ -41,82 +41,80 @@ export const Luto: React.FC<LutoProps> = ({ status }) => {
     const isVerifying = status === 'verifying';
     const isRecalling = status === 'recalling';
 
-    const getEyeClass = () => {
-        if (isListening) return 'animate-luto-eye-listen';
-        if (isExecuting) return 'animate-luto-eye-execute';
+    const getGlowClass = () => {
+        if (isConnecting || isVerifying) return 'alex-glow-yellow';
+        if (isRecalling) return 'alex-glow-purple';
         return '';
-    };
-
-    const getMouthClass = () => {
-        if (isSpeaking) return 'animate-luto-mouth-speak';
-        return 'opacity-0';
     };
     
     return (
         <div className="w-full h-full relative flex items-center justify-center">
-            {/* Luto SVG Character */}
-            <svg viewBox="0 0 150 150" className="w-full h-full drop-shadow-lg animate-luto-hover">
+            {/* Alex SVG Character */}
+            <svg viewBox="0 0 200 200" className="w-full h-full drop-shadow-lg animate-alex-hover">
                 <defs>
-                    <radialGradient id="luto-body-grad" cx="50%" cy="0%" r="100%">
-                        <stop offset="0%" stopColor="#AAB5C4" />
-                        <stop offset="100%" stopColor="#4A5568" />
+                    <radialGradient id="alex-skin-grad" cx="50%" cy="40%" r="60%">
+                        <stop offset="0%" stopColor="#fce4d6" />
+                        <stop offset="100%" stopColor="#f8c6b1" />
                     </radialGradient>
-                     <linearGradient id="luto-visor-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" stopColor="#2D3748" />
-                        <stop offset="100%" stopColor="#1A202C" />
+                    <linearGradient id="alex-sweater-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#5B9BD5" />
+                        <stop offset="100%" stopColor="#3A6B9B" />
                     </linearGradient>
-                    <filter id="luto-glow" x="-50%" y="-50%" width="200%" height="200%">
-                        <feGaussianBlur stdDeviation="5" result="coloredBlur" />
+                     <filter id="alex-inner-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                        <feComponentTransfer in="SourceAlpha">
+                           <feFuncA type="table" tableValues="1 0" />
+                        </feComponentTransfer>
+                        <feGaussianBlur stdDeviation="2"/>
+                        <feOffset dx="0" dy="3" result="offsetblur"/>
+                        <feFlood floodColor="rgba(0,0,0,0.25)" result="color"/>
+                        <feComposite in2="offsetblur" operator="in"/>
+                        <feComposite in2="SourceAlpha" operator="in" />
                         <feMerge>
-                            <feMergeNode in="coloredBlur" />
-                            <feMergeNode in="SourceGraphic" />
+                           <feMergeNode in="SourceGraphic" />
+                           <feMergeNode />
                         </feMerge>
                     </filter>
-                    <clipPath id="visor-clip">
-                        <path d="M 40 55 C 40 40, 110 40, 110 55 L 110 85 C 110 100, 40 100, 40 85 Z" />
-                    </clipPath>
                 </defs>
 
-                {/* Main Body */}
-                <g>
-                    {/* Head */}
-                    <path d="M 50 25 C 25 25, 25 75, 50 75 L 100 75 C 125 75, 125 25, 100 25 Z" fill="url(#luto-body-grad)" />
-                    {/* Body */}
-                    <path d="M 55 70 C 40 70, 40 120, 55 120 L 95 120 C 110 120, 110 70, 95 70 Z" fill="#4A5568" />
-                    {/* Neck */}
-                     <rect x="65" y="65" width="20" height="10" fill="#3A4454" />
-                </g>
+                <g className={getGlowClass()}>
+                    {/* Main Body */}
+                    <circle cx="100" cy="100" r="80" fill="url(#alex-skin-grad)" />
+                    <path d="M 20 130 C 40 180, 160 180, 180 130 L 180 180 L 20 180 Z" fill="url(#alex-sweater-grad)" />
+                    <path d="M 55 25 C 20 40, 30 80, 80 60 C 100 50, 150 50, 150 70 C 180 80, 180 40, 145 25 Z" fill="#2E231F" />
 
-                {/* Visor */}
-                <g>
-                    <path d="M 40 55 C 40 40, 110 40, 110 55 L 110 85 C 110 100, 40 100, 40 85 Z" fill="url(#luto-visor-grad)" />
-                    { isExecuting && <path d="M 40 55 C 40 40, 110 40, 110 55 L 110 85 C 110 100, 40 100, 40 85 Z" fill="#F59E0B" className="opacity-0 animate-luto-visor-flash" /> }
-                </g>
+                    {/* Face features */}
+                    <g>
+                        {/* Eyebrows */}
+                        <path d="M 60 70 Q 75 60, 90 70" stroke="#2E231F" strokeWidth="5" fill="none" strokeLinecap="round" />
+                        <path d="M 110 70 Q 125 60, 140 70" stroke="#2E231F" strokeWidth="5" fill="none" strokeLinecap="round" />
+                        
+                        {/* Eyes */}
+                        <g className={`${isListening ? 'animate-alex-pupil-listen' : ''} animate-alex-blink`}>
+                            <circle cx="75" cy="85" r="10" fill="white" />
+                            <circle cx="75" cy="85" r="5" fill="#2E231F" className="pupil" />
+                            <circle cx="125" cy="85" r="10" fill="white" />
+                            <circle cx="125" cy="85" r="5" fill="#2E231F" className="pupil" />
+                        </g>
 
-                {/* Eyes & Mouth */}
-                <g clipPath="url(#visor-clip)">
-                    {/* Eyes */}
-                    <g className={getEyeClass()}>
-                        <rect x="50" y="60" width="15" height="20" rx="7.5" fill="#38BDF8" filter="url(#luto-glow)" />
-                        <rect x="85" y="60" width="15" height="20" rx="7.5" fill="#38BDF8" filter="url(#luto-glow)" />
+                        {/* Nose */}
+                        <path d="M 100 90 C 95 105, 105 105, 100 90" fill="#E8BBAA" opacity="0.7"/>
+
+                        {/* Mouth */}
+                        <path d="M 80 120 Q 100 130, 120 120" stroke="#8B5742" strokeWidth="4" fill="none" strokeLinecap="round" className={isSpeaking ? 'animate-alex-mouth-speak' : ''} />
                     </g>
-                    {/* Mouth */}
-                    <rect x="60" y="90" width="30" height="5" rx="2.5" fill="#38BDF8" filter="url(#luto-glow)" className={`transition-opacity duration-200 ${getMouthClass()}`} />
+                    
+                     {/* Name Tag */}
+                     <g filter="url(#alex-inner-shadow)">
+                        <path d="M 80 140 C 60 150, 60 180, 80 180 L 120 180 C 140 180, 140 150, 120 140 Z" fill="#795548" />
+                        <rect x="70" y="155" width="60" height="25" rx="5" fill="#F5F5F5" stroke="#AAA" strokeWidth="0.5" />
+                        <text x="100" y="173" fontFamily="Roboto, sans-serif" fontSize="14" fontWeight="bold" fill="#222" textAnchor="middle">Alex</text>
+                    </g>
                 </g>
 
-                 {/* Antenna */}
-                <g className={isListening ? 'animate-luto-antenna-twitch' : ''}>
-                    <line x1="100" y1="25" x2="110" y2="15" stroke="#AAB5C4" strokeWidth="3" />
-                    <circle cx="110" cy="15" r="3" fill="#38BDF8" />
+                {/* Shades for executing */}
+                <g className={isExecuting ? 'animate-alex-shades-drop' : 'opacity-0'} style={{ transformOrigin: 'center 75px', pointerEvents: isExecuting ? 'auto' : 'none' }}>
+                     <path d="M 55 75 L 145 75 A 10 10 0 0 1 145 85 L 155 100 L 45 100 L 55 85 A 10 10 0 0 1 55 75 Z" fill="url(#luto-visor-grad)" stroke="#111" strokeWidth="2" />
                 </g>
-
-                 {/* Chest Light (Connecting/Verifying/Recalling) */}
-                 {(isVerifying || isConnecting || isRecalling) && (
-                     <circle cx="75" cy="95" r="5" fill={isRecalling ? '#c084fc' : '#facc15'} filter="url(#luto-glow)">
-                        <animate attributeName="r" from="5" to="12" dur="1.2s" begin="0s" repeatCount="indefinite" />
-                        <animate attributeName="opacity" from="1" to="0" dur="1.2s" begin="0s" repeatCount="indefinite" />
-                     </circle>
-                 )}
             </svg>
             
             {status === 'idle' && (

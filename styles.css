@@ -135,47 +135,54 @@ $shadows-big:    multiple-box-shadow(100);
 .animate-pulse-mini { animation: pulse-mini 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 .animate-pulse-mini-fast { animation: pulse-mini 1s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 
-/* Luto Character Animations */
-@keyframes luto-hover {
-    0%, 100% { transform: translate(0, 0) rotate(0deg); }
-    25% { transform: translate(1px, -8px) rotate(-0.5deg); }
-    50% { transform: translate(0, 0) rotate(0deg); }
-    75% { transform: translate(-1px, -8px) rotate(0.5deg); }
+/* Alex Orb Animations */
+@keyframes alex-hover {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
 }
-.animate-luto-hover { animation: luto-hover 8s ease-in-out infinite; }
+.animate-alex-hover { animation: alex-hover 6s ease-in-out infinite; }
 
-@keyframes luto-eye-listen {
-    0%, 100% { opacity: 1; transform: scale(1, 1); }
-    50% { opacity: 0.8; transform: scale(1.05, 1.1); }
+@keyframes alex-blink {
+    0%, 90%, 100% { transform: scaleY(1); }
+    95% { transform: scaleY(0.1); }
 }
-.animate-luto-eye-listen { animation: luto-eye-listen 2s ease-in-out infinite; }
-
-@keyframes luto-antenna-twitch {
-    0%, 100% { transform: rotate(0deg); }
-    50% { transform: rotate(-10deg); }
+.animate-alex-blink {
+    animation: alex-blink 4s ease-in-out infinite;
+    transform-origin: center 85px; /* Center of the eyes */
 }
-.animate-luto-antenna-twitch { animation: luto-antenna-twitch 1.5s ease-in-out infinite; transform-origin: 100px 25px; }
 
-
-@keyframes luto-mouth-speak {
-    0%, 100% { transform: scaleY(0.2); opacity: 0.8; }
-    20% { transform: scaleY(1.2); opacity: 1; }
-    50% { transform: scaleY(0.6); opacity: 1; }
-    80% { transform: scaleY(1.0); opacity: 1; }
+@keyframes alex-pupil-listen {
+    0%, 100% { r: 5; }
+    50% { r: 6; }
 }
-.animate-luto-mouth-speak { animation: luto-mouth-speak 0.4s ease-in-out infinite; transform-origin: center; }
+.animate-alex-pupil-listen .pupil { animation: alex-pupil-listen 1.5s ease-in-out infinite; }
 
-@keyframes luto-eye-execute {
-    0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-5px); }
+@keyframes alex-mouth-speak {
+    0%, 100% { d: "M 80 120 Q 100 130 120 120"; }
+    50% { d: "M 80 120 Q 100 135 120 120"; }
 }
-.animate-luto-eye-execute { animation: luto-eye-execute 0.5s ease-in-out infinite; }
+.animate-alex-mouth-speak { animation: alex-mouth-speak 0.4s ease-in-out infinite; }
 
-@keyframes luto-visor-flash {
-    0%, 100% { opacity: 0; }
-    50% { opacity: 0.3; }
+@keyframes alex-shades-drop {
+    from { transform: translateY(-20px) scale(0.9); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
 }
-.animate-luto-visor-flash { animation: luto-visor-flash 1s ease-in-out infinite; }
+.animate-alex-shades-drop {
+    animation: alex-shades-drop 0.3s ease-out forwards;
+}
+
+@keyframes alex-glow {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
+}
+.alex-glow-yellow {
+    filter: drop-shadow(0 0 10px #facc15) drop-shadow(0 0 20px #facc15);
+    animation: alex-glow 1.5s ease-in-out infinite;
+}
+.alex-glow-purple {
+    filter: drop-shadow(0 0 10px #c084fc) drop-shadow(0 0 20px #c084fc);
+    animation: alex-glow 1.5s ease-in-out infinite;
+}
 
 
 /* --- Custom Scrollbar --- */

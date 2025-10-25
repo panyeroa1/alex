@@ -1,7 +1,3 @@
-
-
-
-
 import { GoogleGenAI, LiveServerMessage, Modality, Blob, FunctionDeclaration, FunctionCall, Chat, Part, GenerateContentResponse, Type } from "@google/genai";
 import { ChatMessage, Conversation, MediaItem } from "../types";
 
@@ -201,7 +197,7 @@ export async function connectToLiveSession(
 
     // VAD (Voice Activity Detection) state
     const VAD_THRESHOLD = 0.01; // Sensitivity for speech detection
-    const SILENCE_TIMEOUT_MS = 400; // Time in ms to wait before considering speech ended
+    const SILENCE_TIMEOUT_MS = 800; // Time in ms to wait before considering speech ended
     let vadState: 'silent' | 'speaking' = 'silent';
     let silenceTimer: number | null = null;
 
@@ -571,12 +567,16 @@ export async function analyzeAudioTone(audioBlob: globalThis.Blob): Promise<stri
     };
 
     const textPart = {
-        text: `You are an expert music analyst. Analyze the following audio recording. Provide a detailed breakdown in Markdown format.
-1.  **Key**: The musical key of the song (e.g., C Major, A minor). If you cannot determine the exact key, describe the tonality (e.g., major, minor, modal).
-2.  **Tempo**: The estimated tempo in Beats Per Minute (BPM).
-3.  **Pitch**: Describe the general pitch range and characteristics (e.g., high female vocals, low baritone, wide vocal range, consistent instrumental pitch).
-4.  **Mood & Emotion**: Describe the overall emotional feeling of the song (e.g., melancholic, upbeat, aggressive, peaceful).
-5.  **Genre & Instruments**: Identify the musical genre and the primary instruments you can hear.`
+        text: `You are an expert musicologist with a sharp ear. Analyze the following audio recording in detail. Provide a comprehensive breakdown in well-structured Markdown format, using bold headers for each section (e.g., **Musical Key:**).
+
+Your analysis must include the following sections:
+
+- **Musical Key:** Identify the key (e.g., C Major, A minor). If ambiguous, describe the tonality.
+- **Tempo:** Provide the estimated tempo in Beats Per Minute (BPM).
+- **Vocal Analysis:** Describe the vocal style, pitch range (e.g., soprano, baritone), and characteristics (e.g., breathy, powerful, use of vibrato). If there are no vocals, state "Instrumental".
+- **Instrumentation:** List all identifiable instruments (e.g., Acoustic Guitar, Drum Machine, Synthesizer Pad, Bass Guitar). Be as specific as possible.
+- **Mood & Emotion:** Describe the overall emotional feeling of the song using evocative adjectives (e.g., melancholic, hopeful, aggressive, introspective).
+- **Genre Classification:** Suggest the most likely musical genre(s) and sub-genres (e.g., Indie Pop with Lo-fi elements, Classic Rock ballad).`
     };
     
     try {
