@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, LiveServerMessage, Modality, Blob, FunctionDeclaration, FunctionCall, Chat, Part, GenerateContentResponse, Type } from "@google/genai";
 import { ChatMessage, Conversation, MediaItem } from "../types";
 
@@ -536,5 +537,49 @@ export async function searchYouTube(query: string): Promise<Partial<MediaItem> |
     } catch (error) {
         console.error("YouTube search failed:", error);
         return null;
+    }
+}
+
+export async function generateLyrics(prompt: string, genre?: string): Promise<string> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const fullPrompt = `You are a creative songwriter. Write song lyrics based on the following prompt.
+    Genre: ${genre || 'any'}
+    Prompt: "${prompt}"
+    
+    Provide only the lyrics.`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: fullPrompt,
+        });
+        return response.text.trim();
+    } catch (error) {
+        console.error("Failed to generate lyrics:", error);
+        return "Sorry, I couldn't write a song right now.";
+    }
+}
+
+export async function analyzeAudioTone(audioBlob: globalThis.Blob): Promise<string> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const audioBase64 = await blobToBase64(audioBlob);
+
+    const audioPart = {
+        inlineData: { mimeType: audioBlob.type || 'audio/webm', data: audioBase64 },
+    };
+
+    const textPart = {
+        text: `You are an expert music analyst. Analyze the following audio recording. Describe its musical and emotional tone. What instruments do you hear? What is the genre and mood? Be descriptive and insightful.`
+    };
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts: [textPart, audioPart] },
+        });
+        return response.text;
+    } catch (error) {
+        console.error("Audio tone analysis failed:", error);
+        return "Sorry, I couldn't analyze the song's tone.";
     }
 }

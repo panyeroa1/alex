@@ -16,8 +16,8 @@ export type Database = {
         // By specifying `any` for the history field in Insert/Update, we bypass this issue while keeping `ChatMessage[]` for the Row type for type-safe reads.
         Insert: {
           title: string;
-          // FIX: Use the specific ChatMessage[] type instead of 'any' to fix the type inference issue.
-          history: ChatMessage[];
+          // FIX: Reverted from `ChatMessage[]` to `any` to resolve Supabase type inference issue with jsonb arrays.
+          history: any;
           user_id: string;
           recording_url?: string | null;
           summary?: string | null;
@@ -25,8 +25,8 @@ export type Database = {
         };
         Update: {
           title?: string;
-          // FIX: Use the specific ChatMessage[] type instead of 'any' to fix the type inference issue.
-          history?: ChatMessage[];
+          // FIX: Reverted from `ChatMessage[]` to `any` to resolve Supabase type inference issue with jsonb arrays.
+          history?: any;
           recording_url?: string | null;
           summary?: string | null;
           last_accessed_at?: string;

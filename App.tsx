@@ -1,10 +1,11 @@
 
 
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, FunctionCall, Chat } from '@google/genai';
 import { Luto, MiniLuto } from './components/Orb';
 import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, BackgroundTask, IntegrationCredentials, MediaItem, ProjectFile } from './types';
-import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData, analyzeCode, summarizeConversationsForMemory, generateConversationSummary, performWebSearch, searchYouTube } from './services/geminiService';
+import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData, analyzeCode, summarizeConversationsForMemory, generateConversationSummary, performWebSearch, searchYouTube, generateLyrics, analyzeAudioTone } from './services/geminiService';
 import * as db from './services/supabaseService';
 import { DEFAULT_SYSTEM_PROMPT, DEV_TOOLS } from './constants';
 import { Sidebar } from './components/Sidebar';
@@ -619,10 +620,41 @@ const App: React.FC = () => {
                     result = `Okay, editing the image "${fc.args.fileName}" with your instructions.`;
                     addNotification('Simulating image editing...', 'info');
                     break;
-                case 'createMusic':
-                    result = `Got it, creating a new music track for you.`;
-                    addNotification('Simulating music creation...', 'info');
+                case 'createSong': {
+                    const prompt = fc.args.prompt as string;
+                    const genre = fc.args.genre as string | undefined;
+                    updateBackgroundTask(taskId, `Writing a ${genre || ''} song about "${prompt}"...`);
+                    const lyrics = await generateLyrics(prompt, genre);
+                    result = `Sige Boss, eto na yung sinulat kong kanta para sa'yo:\n\n${lyrics}`;
                     break;
+                }
+                case 'analyzeSongTone': {
+                    const fileName = fc.args.fileName as string;
+                    const fileToAnalyze = uploadedFiles.find(f => f.name === fileName && f.file);
+                    if (!fileToAnalyze) {
+                        result = `Error: Hindi ko mahanap yung file na "${fileName}", Boss. Paki-upload muna.`;
+                        break;
+                    }
+                    updateBackgroundTask(taskId, `Analyzing the tone of "${fileName}"...`);
+                    result = await analyzeAudioTone(fileToAnalyze.file!);
+                    break;
+                }
+                case 'singLyrics': {
+                    const lyrics = fc.args.lyrics as string;
+                    const tone = fc.args.tone as string;
+                    const singPrompt = `Sing the following lyrics in a ${tone} tone. Emphasize the emotion. Do not speak, sing.\n\nLyrics:\n${lyrics}`;
+                    updateBackgroundTask(taskId, `Warming up my vocal cords...`);
+                    try {
+                        const audioBase64 = await synthesizeSpeech(singPrompt);
+                        await playAudio(audioBase64);
+                        result = `Sige Boss, kakantahin ko na. Ehem...`;
+                    } catch (error) {
+                        console.error("Singing failed:", error);
+                        addNotification("Sorry, my voice is a bit hoarse. I couldn't sing.", "error");
+                        result = "Sorry, my voice is a bit hoarse right now.";
+                    }
+                    break;
+                }
                 case 'playMusic': {
                     if (playlist.length === 0) {
                         result = "The music library is empty, Boss. Mag-add muna tayo galing YouTube.";
@@ -758,7 +790,7 @@ const App: React.FC = () => {
              setAgentStatus('listening');
         }
         return result;
-    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles, currentConversationId, transcript, playlist, currentTrack, isPlaying, playTrack, handlePlayPause, handleNextTrack, handlePrevTrack, handleSaveMediaLibrary]);
+    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles, currentConversationId, transcript, playlist, currentTrack, isPlaying, playTrack, handlePlayPause, handleNextTrack, handlePrevTrack, handleSaveMediaLibrary, playAudio]);
 
     const endSession = useCallback(async () => {
         if (isRecording) {
@@ -936,17 +968,16 @@ const App: React.FC = () => {
     
     const handleFileUpload = (files: FileList | null) => {
         if (!files) return;
-        const audioFiles: File[] = [];
-        const otherFiles: UploadedFile[] = [];
-        Array.from(files).forEach(file => {
-            if (file.type.startsWith('audio/')) audioFiles.push(file);
-            else otherFiles.push({ name: file.name, type: file.type, size: file.size });
-        });
-        if (otherFiles.length > 0) {
-            setUploadedFiles(prev => [...prev, ...otherFiles]);
-            addNotification(`${otherFiles.length} file(s) attached.`, 'success');
-        }
-        audioFiles.forEach(async (file) => handleAudioAnalysis(new Blob([file], { type: file.type }), file.name));
+
+        const newFiles: UploadedFile[] = Array.from(files).map(file => ({
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            file: file, // Store the actual File object for later use
+        }));
+
+        setUploadedFiles(prev => [...prev, ...newFiles]);
+        addNotification(`${newFiles.length} file(s) attached.`, 'success');
     };
 
     const handleSaveSystemPrompt = (prompt: string) => {
@@ -1300,22 +1331,22 @@ const App: React.FC = () => {
                 <footer className="fixed bottom-0 left-0 right-0 p-4 z-20">
                      <div className="max-w-md mx-auto flex items-center justify-center gap-3 bg-black/30 backdrop-blur-md rounded-full border border-white/10 p-2 shadow-lg">
                         <button onClick={handleToggleOutputMute} className={`p-3 rounded-full transition-colors ${isOutputMuted ? 'bg-red-500' : 'hover:bg-white/10'}`} aria-label={isOutputMuted ? "Unmute Output" : "Mute Output"}>
-                             {isOutputMuted ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>}
+                             {isOutputMuted ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>}
                         </button>
                         <button onClick={handleToggleVideo} className={`p-3 rounded-full transition-colors ${isVideoEnabled ? 'bg-blue-500' : 'hover:bg-white/10'}`} aria-label={isVideoEnabled ? "Disable Video" : "Enable Video"}>
-                             {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>}
+                             {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>}
                         </button>
                          <button onClick={handleToggleScreenShare} className={`p-3 rounded-full transition-colors ${isScreenSharing ? 'bg-blue-500' : 'hover:bg-white/10'}`} aria-label={isScreenSharing ? "Stop Sharing" : "Share Screen"}>
-                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
                         </button>
                         <button onClick={handleToggleRecording} className={`p-3 rounded-full transition-colors ${isRecording ? 'bg-red-500 animate-pulse-record' : 'hover:bg-white/10'}`} aria-label={isRecording ? "Stop Recording" : "Start Recording Idea"}>
-                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
+                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
                         </button>
                         <button onClick={handleToggleCc} className={`p-3 rounded-full transition-colors ${showCc ? 'bg-blue-500' : 'hover:bg-white/10'}`} aria-label={showCc ? "Hide Captions" : "Show Captions"}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-2"></path><path d="M6 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2"></path><path d="M12 12h.01"></path><path d="M17 12h.01"></path><path d="M7 12h.01"></path></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-2"></path><path d="M6 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2"></path><path d="M12 12h.01"></path><path d="M17 12h.01"></path><path d="M7 12h.01"></path></svg>
                         </button>
                          <button onClick={handleSwitchToChat} className="p-3 rounded-full hover:bg-white/10 transition-colors" aria-label="Switch to Chat Mode">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                         </button>
                     </div>
                 </footer>

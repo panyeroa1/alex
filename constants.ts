@@ -155,16 +155,39 @@ export const DEV_TOOLS: FunctionDeclaration[] = [
             required: ['fileName', 'prompt'],
         },
     },
-     {
-        name: 'createMusic',
+    {
+        name: 'createSong',
         parameters: {
             type: Type.OBJECT,
-            description: 'Creates a piece of music based on a textual description.',
+            description: 'Creates lyrics for a new song based on a prompt, including genre and mood.',
             properties: {
-                prompt: { type: Type.STRING, description: 'A detailed description of the music to create (e.g., "a lo-fi hip hop beat").' },
-                durationInSeconds: { type: Type.NUMBER, description: 'The desired duration of the music in seconds.' },
+                prompt: { type: Type.STRING, description: 'A description of the song to create, e.g., "a sad song about a lost robot".' },
+                genre: { type: Type.STRING, description: 'The musical genre, e.g., "pop", "rock", "lofi".' },
             },
             required: ['prompt'],
+        },
+    },
+    {
+        name: 'analyzeSongTone',
+        parameters: {
+            type: Type.OBJECT,
+            description: "Analyzes the musical and emotional tone of an uploaded song file.",
+            properties: {
+                fileName: { type: Type.STRING, description: "The name of the uploaded audio file to analyze." },
+            },
+            required: ['fileName'],
+        },
+    },
+    {
+        name: 'singLyrics',
+        parameters: {
+            type: Type.OBJECT,
+            description: "Sings the provided lyrics with a specified tone. The AI will try its best to sing.",
+            properties: {
+                lyrics: { type: Type.STRING, description: "The lyrics to be sung." },
+                tone: { type: Type.STRING, description: "The desired tone for singing, e.g., 'happy', 'sad', 'energetic'." },
+            },
+            required: ['lyrics', 'tone'],
         },
     },
     {

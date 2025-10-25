@@ -16,6 +16,7 @@ export interface UploadedFile {
     name: string;
     type: string;
     size: number;
+    file?: File;
 }
 
 export interface ProjectFile extends UploadedFile {
