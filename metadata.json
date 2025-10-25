@@ -1,0 +1,8 @@
+{
+  "name": "Alex",
+  "description": "An AI development agent named Alex that you can have a real-time voice conversation with. Alex can help with development tasks like running deployments, checking logs, and rolling back changes.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
