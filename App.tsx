@@ -1837,15 +1837,7 @@ const App: React.FC = () => {
                 <main className="flex-1 flex items-center justify-center p-4">
                     <div className="w-[300px] h-[300px] flex items-center justify-center relative">
                         <button onClick={toggleSession} className="w-full h-full relative group rounded-full transition-all duration-300 ease-in-out border-2 border-dashed border-transparent hover:border-white/20">
-                            <div className={`transition-opacity duration-300 ${agentStatus === 'idle' ? 'opacity-0' : 'opacity-100'}`}>
-                                <Luto status={agentStatus} analyserNode={currentAnalyser} />
-                            </div>
-                            {agentStatus === 'idle' && (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-white/40 group-hover:text-white/80 transition-all duration-300 ease-in-out transform group-hover:scale-105">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
-                                    <p className="mt-2 text-sm font-semibold tracking-wider uppercase">Tap to Speak</p>
-                                </div>
-                            )}
+                           <Luto status={agentStatus} analyserNode={currentAnalyser} />
                         </button>
                     </div>
                 </main>

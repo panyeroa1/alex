@@ -124,13 +124,20 @@ export const Luto: React.FC<LutoProps> = ({ status, analyserNode }) => {
             animationFrameId = requestAnimationFrame(animate);
             const elapsedTime = clock.getElapsedTime();
 
-            let color = '#6b7280'; // Idle
+            let color: THREE.ColorRepresentation = '#6b7280';
             let energy = 0.1;
-
+            let baseSize = 0.02;
+    
             switch (status) {
-                case 'listening': color = '#34d399'; energy = 0.5; break;
-                case 'speaking': color = '#60a5fa'; energy = 1.0; break;
-                case 'executing': color = '#fbb_f24'; energy = 0.6; break;
+                case 'idle':
+                    color = '#00ffff'; // Cyan for standby
+                    const pulse = (Math.sin(elapsedTime * 1.5) + 1) / 2; // Slow pulse from 0 to 1
+                    energy = 0.2 + pulse * 0.3; // Energy pulsates gently (0.2 to 0.5 for opacity)
+                    baseSize = 0.025 + pulse * 0.015; // Size pulsates (0.025 to 0.04)
+                    break;
+                case 'listening': color = '#34d399'; energy = 0.5; baseSize = 0.03; break;
+                case 'speaking': color = '#60a5fa'; energy = 1.0; baseSize = 0.035; break;
+                case 'executing': color = '#fbbf24'; energy = 0.7; baseSize = 0.03; break; // Fixed typo
                 case 'recalling': color = '#c084fc'; energy = 0.4; break;
                 case 'connecting': case 'verifying': color = '#facc15'; energy = 0.3; break;
             }
@@ -142,13 +149,15 @@ export const Luto: React.FC<LutoProps> = ({ status, analyserNode }) => {
                 for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
                 audioLevel = (sum / dataArray.length) / 128.0; // Normalize
                 energy += audioLevel * 1.5;
-            } else {
+                baseSize += audioLevel * 0.05;
+            } else if (status !== 'idle') {
+                 // Keep other non-audio states animated with a gentle pulse
                  energy += Math.sin(elapsedTime * 2) * 0.05;
             }
             
             material.color.set(color);
-            material.size = Math.max(0.01, energy * 0.03);
-            material.opacity = Math.min(1.0, energy * 0.8);
+            material.size = Math.max(0.01, baseSize);
+            material.opacity = Math.min(1.0, energy);
             
             particleSystem.rotation.y = elapsedTime * 0.1;
             particleSystem.rotation.x = elapsedTime * 0.05;
