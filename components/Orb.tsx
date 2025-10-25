@@ -1,5 +1,6 @@
 
 import React, { useRef, useEffect } from 'react';
+import * as THREE from 'three';
 import type { AgentStatus } from '../types';
 
 interface LutoProps {
@@ -35,153 +36,136 @@ const MiniLuto: React.FC<{ status: AgentStatus }> = ({ status }) => {
 
 
 export const Luto: React.FC<LutoProps> = ({ status, analyserNode }) => {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const bubblesRef = useRef<any[]>([]);
+    const threeRef = useRef<{
+        scene: THREE.Scene;
+        camera: THREE.PerspectiveCamera;
+        renderer: THREE.WebGLRenderer;
+        particleSystem: THREE.Points;
+        material: THREE.PointsMaterial;
+        clock: THREE.Clock;
+    } | null>(null);
 
+    // Effect for initializing the Three.js scene
     useEffect(() => {
-        const canvas = canvasRef.current;
         const container = containerRef.current;
-        if (!canvas || !container) return;
+        if (!container || threeRef.current) return;
 
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.z = 3.5;
 
-        let animationFrameId: number;
-
-        const resizeCanvas = () => {
-            const size = Math.min(container.clientWidth, container.clientHeight);
-            canvas.width = size;
-            canvas.height = size;
-        };
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
         
-        const resizeObserver = new ResizeObserver(resizeCanvas);
-        resizeObserver.observe(container);
-        resizeCanvas();
+        const particleCount = 10000;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const radius = 1.5;
 
-        const dataArray = analyserNode ? new Uint8Array(analyserNode.frequencyBinCount) : new Uint8Array(0);
-        
-        const initBubbles = () => {
-            const numBubbles = 30;
-            bubblesRef.current = [];
-            for (let i = 0; i < numBubbles; i++) {
-                bubblesRef.current.push({
-                    angle: Math.random() * Math.PI * 2,
-                    speed: 0.005 + Math.random() * 0.01,
-                    radius: 3 + Math.random() * 10,
-                    distance: 0.1 + Math.random() * 0.8, 
-                    opacity: 0.1 + Math.random() * 0.3,
-                });
-            }
-        };
-
-        if (bubblesRef.current.length === 0) {
-            initBubbles();
+        for (let i = 0; i < particleCount; i++) {
+            const phi = Math.acos(-1 + (2 * i) / particleCount);
+            const theta = Math.sqrt(particleCount * Math.PI) * phi;
+            const x = radius * Math.cos(theta) * Math.sin(phi);
+            const y = radius * Math.sin(theta) * Math.sin(phi);
+            const z = radius * Math.cos(phi);
+            positions[i * 3] = x;
+            positions[i * 3 + 1] = y;
+            positions[i * 3 + 2] = z;
         }
 
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        
+        const material = new THREE.PointsMaterial({
+            color: 0x6b7280,
+            size: 0.02,
+            blending: THREE.AdditiveBlending,
+            transparent: true,
+            depthWrite: false
+        });
 
-        const render = (time: number) => {
-            const width = canvas.width;
-            const height = canvas.height;
-            const centerX = width / 2;
-            const centerY = height / 2;
-            const mainRadius = Math.min(width, height) / 3.5;
+        const particleSystem = new THREE.Points(geometry, material);
+        scene.add(particleSystem);
 
-            ctx.clearRect(0, 0, width, height);
-            
-            let color = 'rgba(107, 114, 128, 1)'; // Idle color
+        threeRef.current = { scene, camera, renderer, particleSystem, material, clock: new THREE.Clock() };
+
+        const resizeObserver = new ResizeObserver(() => {
+            if (!threeRef.current || !container) return;
+            const { camera, renderer } = threeRef.current;
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+        resizeObserver.observe(container);
+
+        return () => {
+            resizeObserver.disconnect();
+            if (container) {
+                container.removeChild(renderer.domElement);
+            }
+            material.dispose();
+            geometry.dispose();
+            renderer.dispose();
+        };
+    }, []);
+
+    // Effect for the animation loop
+    useEffect(() => {
+        if (!threeRef.current) return;
+        
+        const { scene, camera, renderer, particleSystem, material, clock } = threeRef.current;
+        let animationFrameId: number;
+        
+        const dataArray = analyserNode ? new Uint8Array(analyserNode.frequencyBinCount) : null;
+
+        const animate = () => {
+            animationFrameId = requestAnimationFrame(animate);
+            const elapsedTime = clock.getElapsedTime();
+
+            let color = '#6b7280'; // Idle
             let energy = 0.1;
 
             switch (status) {
-                case 'listening':
-                    color = 'rgba(52, 211, 153, 1)'; // Green
-                    energy = 0.5;
-                    break;
-                case 'speaking':
-                    color = 'rgba(96, 165, 250, 1)'; // Blue
-                    energy = 1.0;
-                    break;
-                case 'executing':
-                    color = 'rgba(251, 191, 36, 1)'; // Amber
-                    energy = 0.6;
-                    break;
-                case 'recalling':
-                    color = 'rgba(192, 132, 252, 1)'; // Purple
-                    energy = 0.4;
-                    break;
-                case 'connecting':
-                case 'verifying':
-                    color = 'rgba(250, 204, 21, 1)'; // Yellow
-                     energy = 0.3;
-                    break;
+                case 'listening': color = '#34d399'; energy = 0.5; break;
+                case 'speaking': color = '#60a5fa'; energy = 1.0; break;
+                case 'executing': color = '#fbb_f24'; energy = 0.6; break;
+                case 'recalling': color = '#c084fc'; energy = 0.4; break;
+                case 'connecting': case 'verifying': color = '#facc15'; energy = 0.3; break;
             }
-
+            
             let audioLevel = 0;
-            if (analyserNode && (status === 'listening' || status === 'speaking')) {
+            if (analyserNode && dataArray && (status === 'listening' || status === 'speaking')) {
                 analyserNode.getByteFrequencyData(dataArray);
                 let sum = 0;
-                for (let i = 0; i < dataArray.length; i++) {
-                    sum += dataArray[i];
-                }
-                audioLevel = (sum / dataArray.length) / 255;
-                energy += audioLevel * 2.5;
+                for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                audioLevel = (sum / dataArray.length) / 128.0; // Normalize
+                energy += audioLevel * 1.5;
             } else {
-                 energy += Math.sin(time / 500) * 0.05;
+                 energy += Math.sin(elapsedTime * 2) * 0.05;
             }
-
-            // Draw bubbles inside the circle
-            bubblesRef.current.forEach(bubble => {
-                bubble.angle += bubble.speed * energy * 0.5;
-                
-                const r = mainRadius * bubble.distance;
-                const x = centerX + Math.cos(bubble.angle) * r;
-                const y = centerY + Math.sin(bubble.angle) * r;
-
-                ctx.beginPath();
-                ctx.arc(x, y, bubble.radius * (1 + audioLevel * 0.5), 0, Math.PI * 2);
-                ctx.fillStyle = color.replace('1)', `${bubble.opacity * (0.5 + energy * 0.5)})`);
-                ctx.fill();
-            });
-
-            // Central core glow
-            const coreGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, mainRadius * 0.9);
-            coreGlow.addColorStop(0, `${color.replace('1)', '0.2)')}`);
-            coreGlow.addColorStop(1, `${color.replace('1)', '0)')}`);
-
-            ctx.fillStyle = coreGlow;
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, mainRadius * 0.9, 0, 2 * Math.PI);
-            ctx.fill();
-
-            // Outer Ring
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, mainRadius, 0, 2 * Math.PI, false);
-            ctx.strokeStyle = color.replace('1)', '0.5)');
-            ctx.lineWidth = 4;
-            ctx.stroke();
-
-            // Subtle inner glow for the ring
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, mainRadius - 3, 0, 2 * Math.PI, false);
-            ctx.strokeStyle = color.replace('1)', '0.2)');
-            ctx.lineWidth = 2;
-            ctx.stroke();
             
-
-            animationFrameId = requestAnimationFrame(render);
+            material.color.set(color);
+            material.size = Math.max(0.01, energy * 0.03);
+            material.opacity = Math.min(1.0, energy * 0.8);
+            
+            particleSystem.rotation.y = elapsedTime * 0.1;
+            particleSystem.rotation.x = elapsedTime * 0.05;
+            
+            renderer.render(scene, camera);
         };
-
-        render(0);
-
+        
+        animate();
+        
         return () => {
             cancelAnimationFrame(animationFrameId);
-            resizeObserver.disconnect();
         };
     }, [status, analyserNode]);
 
     return (
         <div ref={containerRef} className="w-full h-full relative flex items-center justify-center">
-            <canvas ref={canvasRef}></canvas>
+            {/* The canvas is now managed by Three.js and will be appended here */}
         </div>
     );
 };

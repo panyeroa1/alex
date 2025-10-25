@@ -1708,7 +1708,7 @@ const App: React.FC = () => {
                 </header>
 
                 <main className="flex-1 flex items-center justify-center p-4">
-                    <div className="w-full max-w-lg h-full max-h-lg flex items-center justify-center relative">
+                    <div className="w-[300px] h-[300px] flex items-center justify-center relative">
                         <button onClick={toggleSession} className="w-full h-full relative group">
                             <Luto status={agentStatus} analyserNode={currentAnalyser} />
                         </button>
