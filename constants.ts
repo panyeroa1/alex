@@ -171,11 +171,54 @@ export const DEV_TOOLS: FunctionDeclaration[] = [
         name: 'playMusic',
         parameters: {
             type: Type.OBJECT,
-            description: 'Plays a music track from the user-defined media library. If no track name is given, a random track is played.',
+            description: 'Plays a music track from the library. If no track name is given, it plays the first track or resumes playback. It can also play a specific track by name.',
             properties: {
-                trackName: { type: Type.STRING, description: 'The name of the track to play from the library.' },
-                volume: { type: Type.NUMBER, description: 'The volume level, from 0.0 (silent) to 1.0 (full volume).' },
+                trackName: { type: Type.STRING, description: 'Optional. The name of the track to play from the library.' },
+                playlistName: { type: Type.STRING, description: 'Optional. The name of a playlist to play (e.g., "workout playlist"). Currently not implemented.' },
             },
+        },
+    },
+    {
+        name: 'pauseMusic',
+        description: 'Pauses the currently playing music track.',
+    },
+    {
+        name: 'resumeMusic',
+        description: 'Resumes the currently paused music track.',
+    },
+    {
+        name: 'nextTrack',
+        description: 'Skips to the next track in the playlist.',
+    },
+    {
+        name: 'previousTrack',
+        description: 'Goes back to the previous track in the playlist.',
+    },
+    {
+        name: 'listPlaylist',
+        description: 'Lists all the music tracks currently in the media library playlist.',
+    },
+    {
+        name: 'searchYouTubeAndAddToPlaylist',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Searches for a music video on YouTube and adds it to the media library playlist.',
+            properties: {
+                query: { type: Type.STRING, description: 'The song title and artist to search for on YouTube. E.g., "Rick Astley Never Gonna Give You Up".' },
+            },
+            required: ['query'],
+        },
+    },
+    {
+        name: 'createPlaylistFromQuery',
+        parameters: {
+            type: Type.OBJECT,
+            description: 'Creates a playlist by searching for multiple songs related to a query on YouTube and adding them to the library.',
+            properties: {
+                query: { type: Type.STRING, description: 'A description of the playlist to create, e.g., "90s rock playlist" or "lofi hip hop for studying".' },
+                numberOfSongs: { type: Type.NUMBER, description: 'The number of songs to add to the playlist. Defaults to 5.' },
+            },
+            required: ['query'],
         },
     },
     {

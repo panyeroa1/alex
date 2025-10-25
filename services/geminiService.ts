@@ -1,5 +1,6 @@
-import { GoogleGenAI, LiveServerMessage, Modality, Blob, FunctionDeclaration, FunctionCall, Chat, Part, GenerateContentResponse } from "@google/genai";
-import { ChatMessage, Conversation } from "../types";
+
+import { GoogleGenAI, LiveServerMessage, Modality, Blob, FunctionDeclaration, FunctionCall, Chat, Part, GenerateContentResponse, Type } from "@google/genai";
+import { ChatMessage, Conversation, MediaItem } from "../types";
 
 export interface LiveSession {
     close(): void;
@@ -492,5 +493,48 @@ Begin your report now.
     } catch (error) {
         console.error(`Code analysis failed for ${fileName}:`, error);
         return `Error: Could not analyze the code for ${fileName}.`;
+    }
+}
+
+export async function searchYouTube(query: string): Promise<Partial<MediaItem> | null> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+        const response = await ai.models.generateContent({
+           model: "gemini-2.5-flash",
+           contents: `Find a song on YouTube for the query: "${query}". Respond ONLY with a JSON object containing "title" and "youtubeId". Example: {"title": "Artist - Song Title", "youtubeId": "videoId"}.`,
+           config: {
+             responseMimeType: "application/json",
+             responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    title: { type: Type.STRING },
+                    youtubeId: { type: Type.STRING }
+                },
+                required: ['title', 'youtubeId']
+             },
+            // FIX: Removed `tools` config because it is incompatible with `responseMimeType` and `responseSchema` as per Gemini API guidelines.
+           },
+        });
+
+        const jsonString = response.text;
+        const result = JSON.parse(jsonString);
+
+        if (result.title && result.youtubeId) {
+             // In a real app, you'd use a service like youtube-dl to get a direct stream URL.
+             // For this simulation, we'll use a placeholder.
+            const placeholderUrl = `https://www.youtube.com/watch?v=${result.youtubeId}`; // Not a direct audio link, but serves for tracking.
+            return {
+                name: result.title,
+                youtubeId: result.youtubeId,
+                url: placeholderUrl, 
+                source: 'youtube',
+                type: 'audio',
+            };
+        }
+        return null;
+
+    } catch (error) {
+        console.error("YouTube search failed:", error);
+        return null;
     }
 }

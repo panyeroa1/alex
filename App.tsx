@@ -1,17 +1,21 @@
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { GoogleGenAI, FunctionCall, Chat } from '@google/genai';
 import { Luto, MiniLuto } from './components/Orb';
 import { AgentStatus, Notification, ChatMessage, UploadedFile, Conversation, BackgroundTask, IntegrationCredentials, MediaItem, ProjectFile } from './types';
-import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData, analyzeCode, summarizeConversationsForMemory, generateConversationSummary, performWebSearch } from './services/geminiService';
+import { connectToLiveSession, disconnectLiveSession, startChatSession, sendChatMessage, generateConversationTitle, type LiveSession, analyzeAudio, synthesizeSpeech, decode, decodeAudioData, analyzeCode, summarizeConversationsForMemory, generateConversationSummary, performWebSearch, searchYouTube } from './services/geminiService';
 import * as db from './services/supabaseService';
 import { DEFAULT_SYSTEM_PROMPT, DEV_TOOLS } from './constants';
 import { Sidebar } from './components/Sidebar';
 import { Settings } from './components/Settings';
+import { MusicPlayer } from './components/MusicPlayer';
 
 // --- Python Execution Service (using Pyodide) ---
 declare global {
     interface Window {
         loadPyodide: (config?: { indexURL: string }) => Promise<any>;
+        onYouTubeIframeAPIReady: () => void;
+        YT: any;
     }
 }
 
@@ -246,6 +250,11 @@ const App: React.FC = () => {
     const [mediaLibrary, setMediaLibrary] = useState<MediaItem[]>([]);
     const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
     const [isPyodideReady, setIsPyodideReady] = useState(false);
+
+    // Music Player State
+    const [playlist, setPlaylist] = useState<MediaItem[]>([]);
+    const [currentTrack, setCurrentTrack] = useState<MediaItem | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
     
     const sessionRef = useRef<LiveSession | null>(null);
     const chatRef = useRef<Chat | null>(null);
@@ -257,6 +266,8 @@ const App: React.FC = () => {
     const audioContextRef = useRef<{ outputCtx: AudioContext, outputGain: GainNode, destinationNode: MediaStreamAudioDestinationNode | null } | null>(null);
     const analyserRef = useRef<{ input: AnalyserNode | null, output: AnalyserNode | null }>({ input: null, output: null });
     const audioPlayerRef = useRef<HTMLAudioElement>(null);
+    const youtubePlayerRef = useRef<any>(null);
+    const [isYouTubeApiReady, setIsYouTubeApiReady] = useState(false);
     
     const toggleOutputMuteRef = useRef<((mute: boolean) => void) | null>(null);
     const isSavingRef = useRef(false);
@@ -296,7 +307,11 @@ const App: React.FC = () => {
         }
         
         const savedLibrary = localStorage.getItem('alex_media_library');
-        if (savedLibrary) setMediaLibrary(JSON.parse(savedLibrary));
+        if (savedLibrary) {
+            const libraryItems = JSON.parse(savedLibrary);
+            setMediaLibrary(libraryItems);
+            setPlaylist(libraryItems.filter((item: MediaItem) => item.type === 'audio'));
+        }
 
         const savedProjectFiles = localStorage.getItem('alex_project_files');
         if(savedProjectFiles) setProjectFiles(JSON.parse(savedProjectFiles));
@@ -449,6 +464,66 @@ const App: React.FC = () => {
         }
     }, [addNotification, updateTranscript, playAudio]);
 
+    // FIX: Moved handleSaveMediaLibrary and music player functions before handleToolCall to resolve "used before declaration" errors.
+    const handleSaveMediaLibrary = useCallback((library: MediaItem[]) => {
+        setMediaLibrary(library);
+        setPlaylist(library.filter(item => item.type === 'audio'));
+        localStorage.setItem('alex_media_library', JSON.stringify(library));
+    }, []);
+
+    // FIX: Reordered music player functions to ensure `playTrack` is declared before functions that use it.
+    const playTrack = useCallback((track: MediaItem) => {
+        setCurrentTrack(track);
+        if (track.source === 'youtube' && track.youtubeId) {
+            audioPlayerRef.current?.pause();
+            if (youtubePlayerRef.current?.loadVideoById) {
+                youtubePlayerRef.current.loadVideoById(track.youtubeId);
+            }
+        } else {
+            youtubePlayerRef.current?.pauseVideo();
+            if (audioPlayerRef.current) {
+                audioPlayerRef.current.src = track.url;
+                audioPlayerRef.current.play();
+            }
+        }
+    }, []);
+
+    const handleNextTrack = useCallback(() => {
+        if (!currentTrack || playlist.length < 2) return;
+        const currentIndex = playlist.findIndex(t => t.id === currentTrack.id);
+        const nextIndex = (currentIndex + 1) % playlist.length;
+        playTrack(playlist[nextIndex]);
+    }, [currentTrack, playlist, playTrack]);
+
+    const handlePrevTrack = useCallback(() => {
+        if (!currentTrack || playlist.length < 2) return;
+        const currentIndex = playlist.findIndex(t => t.id === currentTrack.id);
+        const prevIndex = (currentIndex - 1 + playlist.length) % playlist.length;
+        playTrack(playlist[prevIndex]);
+    }, [currentTrack, playlist, playTrack]);
+
+    const handlePlayPause = useCallback(() => {
+        if (!currentTrack) {
+            if (playlist.length > 0) {
+                playTrack(playlist[0]);
+            }
+            return;
+        }
+        if (isPlaying) {
+            if (currentTrack.source === 'youtube') {
+                youtubePlayerRef.current?.pauseVideo();
+            } else {
+                audioPlayerRef.current?.pause();
+            }
+        } else {
+            if (currentTrack.source === 'youtube') {
+                youtubePlayerRef.current?.playVideo();
+            } else {
+                audioPlayerRef.current?.play();
+            }
+        }
+    }, [isPlaying, currentTrack, playlist, playTrack]);
+
     const handleToolCall = useCallback(async (fc: FunctionCall, source: 'voice' | 'chat') => {
         if (source === 'voice') setAgentStatus('executing');
         const taskId = addBackgroundTask(`Executing: ${fc.name}...`);
@@ -470,7 +545,7 @@ const App: React.FC = () => {
                     result = `Sige Boss, na-save ko na sa memory ko.`;
                     break;
                 }
-                 case 'listPipelines':
+                case 'listPipelines':
                     result = "Available pipelines: production-deploy, staging-deploy, run-tests.";
                     break;
                 case 'getPipelineStatus': {
@@ -527,29 +602,74 @@ const App: React.FC = () => {
                     result = `Got it, creating a new music track for you.`;
                     addNotification('Simulating music creation...', 'info');
                     break;
-                case 'playMusic':
-                    if (!audioPlayerRef.current) {
-                        result = "Sorry Boss, the audio player isn't ready.";
+                case 'playMusic': {
+                    if (playlist.length === 0) {
+                        result = "The music library is empty, Boss. Mag-add muna tayo galing YouTube.";
+                        break;
+                    }
+                    const trackName = fc.args.trackName as string | undefined;
+                    let trackToPlay: MediaItem | undefined = undefined;
+
+                    if (trackName) {
+                        trackToPlay = playlist.find(t => t.name.toLowerCase().includes(trackName.toLowerCase()));
+                    } else if (currentTrack && !isPlaying) {
+                        handlePlayPause();
+                        result = `Sige Boss, resuming music.`;
+                        break;
+                    } else if (!currentTrack) {
+                        trackToPlay = playlist[0];
+                    }
+
+                    if (trackToPlay) {
+                        playTrack(trackToPlay);
+                        result = `Now playing: "${trackToPlay.name}". Sige, Boss.`;
+                    } else if (trackName) {
+                        result = `I couldn't find "${trackName}" in the library, Boss.`;
                     } else {
-                        const audioLibrary = mediaLibrary.filter(item => item.type === 'audio');
-                        if (audioLibrary.length === 0) {
-                            result = "The music library is empty, Boss. Add some tracks in the settings.";
-                            break;
-                        }
-                        const trackName = fc.args.trackName as string | undefined;
-                        let trackToPlay = trackName ? audioLibrary.find(t => t.name.toLowerCase() === trackName.toLowerCase()) : audioLibrary[Math.floor(Math.random() * audioLibrary.length)];
-                        
-                        if (!trackToPlay) {
-                             result = `I couldn't find "${trackName}" in the library, Boss.`;
-                        } else {
-                            const volume = fc.args.volume as number | undefined;
-                            audioPlayerRef.current.src = trackToPlay.url;
-                            audioPlayerRef.current.volume = volume ?? 0.5;
-                            audioPlayerRef.current.play();
-                            result = `Playing "${trackToPlay.name}". Sige, Boss.`;
-                        }
+                        result = `Music is already playing, Boss.`;
                     }
                     break;
+                }
+                case 'pauseMusic':
+                    if (isPlaying) handlePlayPause();
+                    result = "Music paused.";
+                    break;
+                case 'resumeMusic':
+                    if (!isPlaying) handlePlayPause();
+                    result = "Sige, resuming music.";
+                    break;
+                case 'nextTrack':
+                    handleNextTrack();
+                    result = `Sige, next track.`;
+                    break;
+                case 'previousTrack': 
+                    handlePrevTrack();
+                    result = `Sige, previous track.`;
+                    break;
+                case 'listPlaylist':
+                    if (playlist.length === 0) {
+                        result = "The playlist is empty, Boss.";
+                    } else {
+                        const trackList = playlist.map((t, i) => `${i + 1}. ${t.name}`).join('\n');
+                        result = `Here's what's in the playlist:\n${trackList}`;
+                    }
+                    break;
+                 case 'searchYouTubeAndAddToPlaylist': {
+                    const query = fc.args.query as string;
+                    updateBackgroundTask(taskId, `Searching YouTube for "${query}"...`);
+                    const newTrack = await searchYouTube(query);
+                    if (newTrack) {
+                        const newMediaItem: MediaItem = {
+                            id: Date.now(),
+                            ...newTrack
+                        } as MediaItem;
+                        handleSaveMediaLibrary([...mediaLibrary, newMediaItem]);
+                        result = `Sige Boss, I found "${newTrack.name}" on YouTube and added it to your playlist.`;
+                    } else {
+                        result = `Sorry Boss, I couldn't find anything for "${query}" on YouTube right now.`;
+                    }
+                    break;
+                 }
                 case 'listFiles':
                     result = uploadedFiles.length > 0 ? `Current files: ${uploadedFiles.map(f => f.name).join(', ')}` : "No files have been uploaded yet.";
                     break;
@@ -617,7 +737,7 @@ const App: React.FC = () => {
              setAgentStatus('listening');
         }
         return result;
-    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles, currentConversationId, transcript]);
+    }, [addNotification, uploadedFiles, addBackgroundTask, updateBackgroundTask, removeBackgroundTask, mediaLibrary, isPyodideReady, projectFiles, currentConversationId, transcript, playlist, currentTrack, isPlaying, playTrack, handlePlayPause, handleNextTrack, handlePrevTrack, handleSaveMediaLibrary]);
 
     const endSession = useCallback(async () => {
         if (isRecording) {
@@ -831,11 +951,6 @@ const App: React.FC = () => {
         addNotification('Story Auth settings updated.', 'success');
     };
 
-    const handleSaveMediaLibrary = (library: MediaItem[]) => {
-        setMediaLibrary(library);
-        localStorage.setItem('alex_media_library', JSON.stringify(library));
-    };
-    
     const runCliAgentAnalysis = useCallback(async (newFiles: ProjectFile[]) => {
         if (newFiles.length === 0) return;
 
@@ -897,6 +1012,133 @@ const App: React.FC = () => {
         }
     };
     
+    // --- YouTube Player Setup ---
+    const onPlayerStateChange = useCallback((event: any) => {
+        if (window.YT) {
+            const { PlayerState } = window.YT;
+            if (event.data === PlayerState.PLAYING) {
+                setIsPlaying(true);
+            } else if (event.data === PlayerState.PAUSED) {
+                setIsPlaying(false);
+            } else if (event.data === PlayerState.ENDED) {
+                setIsPlaying(false);
+                handleNextTrack();
+            }
+        }
+    }, [handleNextTrack]);
+
+    useEffect(() => {
+        if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+            const tag = document.createElement('script');
+            tag.src = "https://www.youtube.com/iframe_api";
+            const firstScriptTag = document.getElementsByTagName('script')[0];
+            firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+
+            window.onYouTubeIframeAPIReady = () => {
+                setIsYouTubeApiReady(true);
+            };
+        } else if (window.YT) {
+            setIsYouTubeApiReady(true);
+        }
+
+        return () => {
+            if (window.onYouTubeIframeAPIReady) {
+                delete window.onYouTubeIframeAPIReady;
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (isYouTubeApiReady && !youtubePlayerRef.current) {
+            youtubePlayerRef.current = new window.YT.Player('youtube-player-container', {
+                height: '1',
+                width: '1',
+                playerVars: {
+                    playsinline: 1,
+                    controls: 0,
+                    disablekb: 1,
+                    fs: 0,
+                    iv_load_policy: 3,
+                    modestbranding: 1,
+                    rel: 0,
+                    showinfo: 0,
+                },
+                events: {
+                    'onReady': () => console.log("YouTube Player is ready."),
+                    'onStateChange': onPlayerStateChange,
+                },
+            });
+        }
+    }, [isYouTubeApiReady, onPlayerStateChange]);
+    
+    // --- Audio Player Event Listeners ---
+    useEffect(() => {
+        const audioEl = audioPlayerRef.current;
+        if (!audioEl) return;
+
+        const onPlay = () => setIsPlaying(true);
+        const onPause = () => setIsPlaying(false);
+        const onEnded = () => handleNextTrack();
+
+        audioEl.addEventListener('play', onPlay);
+        audioEl.addEventListener('pause', onPause);
+        audioEl.addEventListener('ended', onEnded);
+
+        return () => {
+            audioEl.removeEventListener('play', onPlay);
+            audioEl.removeEventListener('pause', onPause);
+            audioEl.removeEventListener('ended', onEnded);
+        };
+    }, [handleNextTrack]);
+
+    // --- Media Session API for Background Playback ---
+    useEffect(() => {
+        if ('mediaSession' in navigator) {
+            if (currentTrack) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: currentTrack.name,
+                    artist: currentTrack.source === 'youtube' ? 'YouTube' : 'Library',
+                    album: "Alex's Playlist",
+                    // A placeholder artwork
+                    artwork: [
+                        { src: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M9 18V5l12-2v13M12 18V5%22 fill=%22none%22 stroke=%22white%22 stroke-width=%222%22/%3E%3C/svg%3E', type: 'image/svg+xml', sizes: '512x512' },
+                    ]
+                });
+
+                navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+                
+                // Set up action handlers for lock screen/notification controls
+                navigator.mediaSession.setActionHandler('play', handlePlayPause);
+                navigator.mediaSession.setActionHandler('pause', handlePlayPause);
+                navigator.mediaSession.setActionHandler('nexttrack', playlist.length > 1 ? handleNextTrack : null);
+                navigator.mediaSession.setActionHandler('previoustrack', playlist.length > 1 ? handlePrevTrack : null);
+
+            } else {
+                // Clear metadata and handlers when no track is active
+                navigator.mediaSession.metadata = null;
+                navigator.mediaSession.playbackState = 'none';
+                navigator.mediaSession.setActionHandler('play', null);
+                navigator.mediaSession.setActionHandler('pause', null);
+                navigator.mediaSession.setActionHandler('nexttrack', null);
+                navigator.mediaSession.setActionHandler('previoustrack', null);
+            }
+        }
+        
+        // Cleanup function
+        return () => {
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = null;
+                navigator.mediaSession.playbackState = 'none';
+                navigator.mediaSession.setActionHandler('play', null);
+                navigator.mediaSession.setActionHandler('pause', null);
+                navigator.mediaSession.setActionHandler('nexttrack', null);
+                navigator.mediaSession.setActionHandler('previoustrack', null);
+            }
+        };
+
+    }, [currentTrack, isPlaying, playlist, handlePlayPause, handleNextTrack, handlePrevTrack]);
+
+
     const toggleSession = useCallback(() => { agentStatus !== 'idle' ? endSession() : startSession(); }, [endSession, startSession, agentStatus]);
     const handleToggleOutputMute = () => { const mute = !isOutputMuted; setIsOutputMuted(mute); toggleOutputMuteRef.current?.(mute); };
     const handleToggleVideo = () => setIsVideoEnabled(prev => !prev);
@@ -925,6 +1167,7 @@ const App: React.FC = () => {
 
     return (
         <div className="relative flex flex-col h-screen bg-black text-white font-sans overflow-hidden">
+            <div id="youtube-player-container" className="absolute -top-96 -left-96"></div>
             <audio ref={audioPlayerRef} hidden />
              <Sidebar 
                 isOpen={isSidebarOpen}
@@ -978,61 +1221,63 @@ const App: React.FC = () => {
                      <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Open Conversation History">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                     </button>
-                    <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-1">
+                    <div className="flex items-center gap-2">
                         {backgroundTasks.map(task => (
-                             <div key={task.id} className="text-xs px-3 py-1 bg-black/40 text-white/80 rounded-full animate-fade-in-out-quick backdrop-blur-sm">
+                             <div key={task.id} className="text-xs px-3 py-1.5 rounded-full bg-black/50 backdrop-blur-md border border-white/10 animate-fade-in-out-quick">
                                 {task.message}
                             </div>
                         ))}
                     </div>
-                    <div className="flex items-center gap-2 text-gray-400">
-                        <button onClick={handleToggleCc} className={`p-2 transition-all active:scale-95 ${showCc ? 'text-blue-400' : 'hover:text-white'}`} aria-label="Toggle Closed Captions">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3.8 7.2c.8-1.6 2-3 3.5-4 1.5-1 3.3-1.4 5.2-1.2 1.9.2 3.6.9 5 2.1 1.4 1.2 2.5 2.8 3 4.7.5 1.9.5 3.9.1 5.8s-1.2 3.6-2.4 5c-1.2 1.4-2.8 2.5-4.7 3s-3.9.5-5.8.1-3.6-1.2-5-2.4-2.5-2.8-3-4.7c-.5-1.9-.5-4 .1-5.9zM10 12c.3-1.3 1.4-2 3-2 1.6 0 2.9.8 3 2.2.1 1.2-.6 2.2-2 2.8"/><path d="M10 16c.3-1.3 1.4-2 3-2 1.6 0 2.9.8 3 2.2.1 1.2-.6 2.2-2 2.8"/></svg>
-                        </button>
-                        <button onClick={handleToggleOutputMute} className={`p-2 transition-all active:scale-95 ${isOutputMuted ? 'text-red-500' : 'hover:text-white'}`} aria-label="Toggle Speaker">
-                            {isOutputMuted ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" x2="17" y1="9" y2="15"></line><line x1="17" x2="23" y1="9" y2="15"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>}
-                        </button>
-                        <button onClick={() => setIsSettingsOpen(true)} className="p-2 transition-all hover:text-white active:scale-95" aria-label="Open Settings">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                        </button>
-                    </div>
+                    <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition-all active:scale-95" aria-label="Open Settings">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    </button>
                 </header>
 
-                <main className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-64 h-64 md:w-80 md:h-80 z-10">
-                        <button onClick={toggleSession} disabled={agentStatus === 'connecting' || agentStatus === 'verifying' || agentStatus === 'recalling'} className="w-full h-full rounded-full transition-transform duration-300 ease-in-out hover:scale-105 focus:outline-none relative disabled:opacity-50 disabled:scale-100 group" aria-label={sessionRef.current ? 'Interaction in progress' : 'Start Session'}>
+                <main className="flex-1 flex items-center justify-center p-4">
+                    <div className="w-full max-w-lg h-full max-h-lg flex items-center justify-center relative">
+                        <button onClick={toggleSession} className="w-full h-full relative group">
                             <Luto status={agentStatus} analyserNode={currentAnalyser} />
                         </button>
                     </div>
-                    {showCc && (
-                        <div className="absolute bottom-28 md:bottom-32 left-4 right-4 z-20 h-32 md:h-48 bg-black/30 backdrop-blur-sm rounded-lg p-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent">
-                            {transcript.map((msg) => (
-                                <div key={msg.id} className="text-left mb-2">
-                                    <span className={`font-bold ${msg.speaker === 'alex' ? 'text-blue-300' : 'text-green-300'}`}>{msg.speaker === 'alex' ? 'Alex' : 'You'}: </span>
-                                    <span dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br />') }}></span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
                 </main>
+
+                {showCc && transcript.length > 0 && (
+                    <div className="absolute bottom-32 left-0 right-0 p-4 text-center">
+                         <p className="inline bg-black/50 p-2 rounded">{transcript[transcript.length-1].text}</p>
+                    </div>
+                )}
                 
-                <footer className="fixed bottom-0 left-0 right-0 p-4 md:p-6 z-10">
-                    <div className="flex justify-around items-center max-w-xs md:max-w-sm mx-auto bg-black/20 backdrop-blur-md p-2 rounded-full">
-                        <button onClick={handleToggleVideo} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all hover:scale-110 active:scale-100 ${isVideoEnabled ? 'bg-blue-500/50 hover:bg-blue-500/70' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isVideoEnabled ? "Turn off Video" : "Turn on Video"}>
-                            {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6Z"/><path d="m2 5 1-1h10l1 1v10l-1 1H3l-1-1Z"/><path d="m2 14 3-3 2 2 3-3 2 2"/></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.6 11.6L22 7v10l-6.4-4.6Z"/><path d="M2 5h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/></svg>}
+                <footer className="fixed bottom-0 left-0 right-0 p-4 z-20">
+                     <div className="max-w-md mx-auto flex items-center justify-center gap-3 bg-black/30 backdrop-blur-md rounded-full border border-white/10 p-2 shadow-lg">
+                        <button onClick={handleToggleOutputMute} className={`p-3 rounded-full transition-colors ${isOutputMuted ? 'bg-red-500' : 'hover:bg-white/10'}`} aria-label={isOutputMuted ? "Unmute Output" : "Mute Output"}>
+                             {isOutputMuted ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>}
                         </button>
-                        <button onClick={handleToggleScreenShare} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all hover:scale-110 active:scale-100 disabled:opacity-30 disabled:pointer-events-none ${isScreenSharing ? 'bg-blue-500/50 hover:bg-blue-500/70' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isScreenSharing ? "Stop Sharing Screen" : "Share Screen"}>
-                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 17a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16z"/><path d="M12 11v-4"/><path d="m9 10 3-3 3 3"/></svg>
+                        <button onClick={handleToggleVideo} className={`p-3 rounded-full transition-colors ${isVideoEnabled ? 'bg-blue-500' : 'hover:bg-white/10'}`} aria-label={isVideoEnabled ? "Disable Video" : "Enable Video"}>
+                             {isVideoEnabled ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>}
                         </button>
-                        <button onClick={handleToggleRecording} disabled={agentStatus === 'idle' || agentStatus === 'connecting' || agentStatus === 'verifying'} className={`w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full text-white transition-all hover:scale-110 active:scale-100 disabled:opacity-30 disabled:pointer-events-none ${isRecording ? 'bg-red-600/80 animate-pulse-record' : 'bg-white/10 hover:bg-white/20'}`} aria-label={isRecording ? "Stop Recording" : "Start Recording"}>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="currentColor" className="text-white"><circle cx="12" cy="12" r="10"></circle></svg>
+                         <button onClick={handleToggleScreenShare} className={`p-3 rounded-full transition-colors ${isScreenSharing ? 'bg-blue-500' : 'hover:bg-white/10'}`} aria-label={isScreenSharing ? "Stop Sharing" : "Share Screen"}>
+                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
                         </button>
-                        <button onClick={handleSwitchToChat} className="w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/20 transition-all hover:scale-110 active:scale-100" aria-label="Switch to Chat Mode">
+                        <button onClick={handleToggleRecording} className={`p-3 rounded-full transition-colors ${isRecording ? 'bg-red-500 animate-pulse-record' : 'hover:bg-white/10'}`} aria-label={isRecording ? "Stop Recording" : "Start Recording Idea"}>
+                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="3"></circle></svg>
+                        </button>
+                        <button onClick={handleToggleCc} className={`p-3 rounded-full transition-colors ${showCc ? 'bg-blue-500' : 'hover:bg-white/10'}`} aria-label={showCc ? "Hide Captions" : "Show Captions"}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-2"></path><path d="M6 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h2"></path><path d="M12 12h.01"></path><path d="M17 12h.01"></path><path d="M7 12h.01"></path></svg>
+                        </button>
+                         <button onClick={handleSwitchToChat} className="p-3 rounded-full hover:bg-white/10 transition-colors" aria-label="Switch to Chat Mode">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                         </button>
                     </div>
                 </footer>
             </div>
+            
+            <MusicPlayer 
+                currentTrack={currentTrack}
+                isPlaying={isPlaying}
+                onPlayPause={handlePlayPause}
+                onNext={handleNextTrack}
+                onPrev={handlePrevTrack}
+            />
         </div>
     );
 };

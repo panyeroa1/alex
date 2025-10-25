@@ -54,4 +54,6 @@ export interface MediaItem {
     name: string;
     url: string;
     type: 'audio' | 'video';
+    source?: 'url' | 'youtube';
+    youtubeId?: string;
 }
